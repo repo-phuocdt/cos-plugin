@@ -1,0 +1,14 @@
+{
+  "name": "cos-plugin",
+  "description": "Local marketplace for the Chief of Staff (cos) plugin.",
+  "owner": {
+    "name": "cos-plugin contributors"
+  },
+  "plugins": [
+    {
+      "name": "cos",
+      "source": "./",
+      "description": "Your own Chief of Staff agent: a persona, one memory file per project, intake, delegation through Herdr, and session hooks."
+    }
+  ]
+}
