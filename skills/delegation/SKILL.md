@@ -48,7 +48,8 @@ a stop rule, load the `cos:loop` skill.
 
 1. **Frame.** Write the goal, the constraints, the non-goals, and the
    acceptance test in one short block. If you cannot write the acceptance test,
-   you are not ready to delegate.
+   you are not ready to delegate. The one exception is a plan-only run (gate 1
+   in the `cos:loop` skill).
 2. **Pick a runtime and a profile.** See the `cos:model-routing` skill. The
    profile is a `config_dir` from `cos.json`.
 3. **Open a pane** in the project's directory, without stealing focus:
@@ -219,8 +220,16 @@ as "send", so the task arrives cut into pieces, or does not arrive at all. Herdr
 still answers `agent_prompted`, so the call looks fine.
 
 Write the block above to a file inside the agent's working directory, then send
-one short line. The task file is a hand-off file (see `identity.md`): add the
-line `Do not commit this file.` to it, and delete it when the run ends.
+one short line. The task file is a hand-off file (see `identity.md`). Before
+you write it, add the hand-off file names to the repo's `.git/info/exclude`,
+one per line, so no agent's `git add -A` can commit them:
+
+```bash
+printf '%s\n' .loop-task.md .lead-task.md .lead-report.md >> <repo>/.git/info/exclude
+```
+
+Skip a name that is already there. Also add the line `Do not commit this
+file.` to the task file, and delete the file when the run ends.
 
 ```bash
 herdr agent prompt maker "Read the file .loop-task.md in this directory and do exactly what it says."

@@ -37,7 +37,8 @@ TAIL = (
     "Say it in one line. To read what was said, use the cos:catch-up skill.\n"
 )
 INBOX = (
-    "\nINBOX: {n} session record(s) wait in memory/inbox.jsonl. The SessionEnd "
+    "\nINBOX: {n} session record(s) wait in memory/inbox.jsonl (and in "
+    "memory/inbox.reading.jsonl, if a past session stopped halfway). The SessionEnd "
     "hook wrote one per past session in this workspace, with its first prompt "
     "and any correction the principal made. Turn them into a lesson or a "
     "project note, then clear the inbox. See the cos:session-start skill.\n"

@@ -18,6 +18,8 @@ import unicodedata
 CONFIG_NAME = "cos.json"
 MARKER_KEY = "cos_workspace"
 INBOX = os.path.join("memory", "inbox.jsonl")
+# The session-start skill moves the inbox here while it reads it.
+INBOX_READING = os.path.join("memory", "inbox.reading.jsonl")
 
 # Claude Code stores the transcripts of a folder under
 # <config dir>/projects/<encoded cwd>/, where every character that is not a
@@ -167,8 +169,9 @@ def correction_re(config):
         word = normalize(word)
         if any(unicodedata.east_asian_width(c) in "WF" for c in word):
             # Chinese, Japanese, and similar scripts use no spaces between
-            # words, so a word boundary check would never match.
-            parts.append(re.escape(word))
+            # words, so a word boundary check would never match. Match the
+            # word only at the start of the prompt instead.
+            parts.append(r"^[\W_]*" + re.escape(word))
         else:
             parts.append(r"(?<!\w)" + re.escape(word) + r"(?!\w)")
     return re.compile("|".join(parts), re.IGNORECASE)
@@ -183,10 +186,12 @@ def encode(path):
 
 
 def dir_matches(name, want):
-    """True when transcript dir `name` belongs to the folder encoded as `want`."""
+    """True when transcript dir `name` belongs to the folder encoded as `want`,
+    or to one of its worktrees. Long names are compared on their first 200
+    characters, because that is all Claude Code keeps."""
     if len(want) > MAX_ENCODED:
         return name.startswith(want[:MAX_ENCODED] + "-")
-    return name == want or name.startswith(want + WORKTREE)
+    return name == want or name.startswith((want + WORKTREE)[:MAX_ENCODED])
 
 
 def unwrap(text):
@@ -310,14 +315,15 @@ def list_rows(profile_list, since=None, skip=()):
     """One line per folder with sessions, newest first.
 
     Each row shows the folder the newest session ran in, so it can be passed
-    to catch-up.py as it is. skip holds encoded dir names to leave out.
+    to catch-up.py as it is. skip holds encoded folder names to leave out,
+    with their worktrees.
     """
     floor = since_floor(since)
     rows = []
     for profile, config_dir in profile_list:
         root = os.path.join(config_dir, "projects")
         for name in safe_listdir(root):
-            if name in skip:
+            if any(dir_matches(name, want) for want in skip):
                 continue
             files = []
             for path in glob.glob(os.path.join(root, name, "*.jsonl")):
@@ -348,8 +354,12 @@ def transcript_dirs(profile_list, project_path):
 
 
 def inbox_count(root):
-    try:
-        with open(os.path.join(root, INBOX), encoding="utf-8", errors="replace") as f:
-            return sum(1 for line in f if line.strip())
-    except OSError:
-        return 0
+    """Records waiting in the inbox, plus any left in a half-read copy."""
+    n = 0
+    for rel in (INBOX, INBOX_READING):
+        try:
+            with open(os.path.join(root, rel), encoding="utf-8", errors="replace") as f:
+                n += sum(1 for line in f if line.strip())
+        except OSError:
+            pass
+    return n

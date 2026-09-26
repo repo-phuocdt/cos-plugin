@@ -25,7 +25,8 @@ Run `ls -A` in the current folder.
 - The folder holds other work (for example `.git`, `package.json`, or source
   files) → a workspace should be its own folder. Ask the user to confirm
   before you go on.
-- Empty, or only `.claude/` → go on.
+- Empty, or only `.claude/`, or only files an earlier init left
+  (`CLAUDE.md`, `identity.md`, `memory/`) → go on.
 
 ## 2. Collect the answers
 

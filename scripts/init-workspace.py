@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import re
+import stat
 import sys
 import tempfile
 
@@ -52,13 +53,15 @@ DEFAULTS = {
 
 def one_line(value):
     """Answers go into Markdown and JSON. Keep each one on a single line, and
-    drop a leading "@" so CLAUDE.md never reads it as a file import."""
-    return " ".join(str(value).split()).lstrip("@").strip()
+    drop "@" at the start of a word so CLAUDE.md never reads it as a file
+    import."""
+    text = " ".join(str(value).split())
+    return re.sub(r"(^|\s)@+(?=\S)", r"\1", text).strip()
 
 
 def parse_profile(text):
     name, sep, path = text.partition("=")
-    name, path = one_line(name), path.strip()
+    name, path = one_line(name), os.path.expandvars(path.strip())
     if not sep or not name or not path:
         raise argparse.ArgumentTypeError("use NAME=CONFIG_DIR, for example work=/home/me/.claude-work")
     return name, path
@@ -111,10 +114,16 @@ def merge_settings(root, report):
     # Write a temp file, then swap it in, so a crash never leaves half a file.
     target = os.path.realpath(path)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), suffix=".tmp")
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-    os.replace(tmp, target)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.chmod(tmp, stat.S_IMODE(os.stat(target).st_mode))
+        os.replace(tmp, target)
+    except OSError:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
     report.append(("updated (deny " + ", ".join(missing) + ")", SETTINGS))
 
 
@@ -152,6 +161,12 @@ def main():
         "runtimes": runtimes,
         "correction_words": [],
     }
+
+    marker = os.path.join(root, cos_lib.CONFIG_NAME)
+    if os.path.lexists(marker) and not cos_lib.load_config(root).get(cos_lib.MARKER_KEY):
+        print("error: {} belongs to some other tool (no \"{}\" key). Use another "
+              "folder for the workspace.".format(marker, cos_lib.MARKER_KEY), file=sys.stderr)
+        return 1
 
     report = []
     try:

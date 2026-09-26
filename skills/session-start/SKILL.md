@@ -71,7 +71,7 @@ line means the last session did not finish hard rule 3 in `CLAUDE.md`.
 folders with Claude Code sessions in the last 7 days, from every profile in
 `cos.json`, so that list is in your context before you read this page. It
 leaves out this workspace itself. Each row ends with the folder path, which the
-catch-up script takes as it is. Run the command yourself only when you need a
+catch-up script takes in double quotes. Run the command yourself only when you need a
 wider window:
 
 ```bash

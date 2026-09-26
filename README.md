@@ -142,8 +142,8 @@ a `cos.json` written by `/cos:init` (with `"cos_workspace": 1`) and a
 - **SessionStart** (`scripts/session-start.py`) adds to the session's context
   the folders with Claude Code sessions in the last 7 days (from every profile
   in `cos.json`, leaving out the workspace itself) and the number of records
-  in `memory/inbox.jsonl`. It runs when a session starts, and after `/clear`
-  or a compact.
+  in `memory/inbox.jsonl`. It runs at every session start: new, resumed,
+  cleared, or compacted.
 - **SessionEnd** (`scripts/session-end.py`) appends one JSON line to
   `memory/inbox.jsonl`: the time, the reason, the profile, the number of human
   prompts, the first prompt, and up to six prompts that look like corrections.

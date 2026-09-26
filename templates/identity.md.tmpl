@@ -33,10 +33,11 @@ Everything else opens a Herdr pane. This list is short on purpose.
 3. Commit and open the PR at the end of a run (the `pr` and `record` nodes in
    the `cos:loop` skill).
 4. Edit this workspace: `CLAUDE.md`, this file, `cos.json`, and `memory/`.
-5. Handle the hand-off files in a repo you delegate to: write the task file
-   (`.loop-task.md` or `.lead-task.md`), read the report file
-   (`.lead-report.md`), and delete them when the run ends. They are yours,
-   not the repo's, and they are never committed.
+5. Handle the hand-off files in a repo you delegate to: list them in the
+   repo's `.git/info/exclude`, write the task file (`.loop-task.md` or
+   `.lead-task.md`), read the report file (`.lead-report.md`), and delete them
+   when the run ends. They are yours, not the repo's, and they are never
+   committed.
 
 Anything else in another repo is not on this list — not an edit, not a read,
 not a grep, not a test run. Hand it to an agent.
