@@ -20,8 +20,10 @@ Run `ls -A` in the current folder.
   workspace. Do not ask the questions again. Read the answers from `cos.json`
   and run step 3 with them: the script only adds the files that are missing.
   Then say which files were added and stop.
-- `cos.json` is there without `"cos_workspace"` → it belongs to some other
-  tool. Say so and stop.
+- `cos.json` is there but is not valid JSON → it is broken. Show the user
+  what is wrong with it, help them fix it, then start again at step 1.
+- `cos.json` is valid JSON without `"cos_workspace"` → it belongs to some
+  other tool. Say so and stop.
 - The folder holds other work (for example `.git`, `package.json`, or source
   files) → a workspace should be its own folder. Ask the user to confirm
   before you go on.

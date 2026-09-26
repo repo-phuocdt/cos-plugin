@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """SessionStart hook for a Chief of Staff workspace.
 
-It adds two things to the new session's context:
+It adds up to three things to the new session's context:
+  - one warning line when cos.json cannot be read;
   - the folders with Claude Code sessions in the last 7 days, from every
     profile listed in cos.json (work the Chief of Staff may not have seen).
     The workspace itself is left out;
@@ -36,6 +37,10 @@ TAIL = (
     "- a row from the \"unknown\" profile -> that work ran on an account not listed in cos.json\n"
     "Say it in one line. To read what was said, use the cos:catch-up skill.\n"
 )
+WARNING = (
+    "WARNING: cos.json cannot be read ({error}). Fix it; until then the hooks "
+    "use default settings.\n"
+)
 INBOX = (
     "\nINBOX: {n} session record(s) wait in memory/inbox.jsonl (and in "
     "memory/inbox.reading.jsonl, if a past session stopped halfway). The SessionEnd "
@@ -50,14 +55,13 @@ def main():
     root = cos_lib.workspace_from_hook(payload)
     if not root:
         return
-    config = cos_lib.load_config(root)
+    config, error = cos_lib.read_config(root)
     rows = cos_lib.list_rows(
-        cos_lib.profiles(config, root), cos_lib.since_days(DAYS),
-        skip={cos_lib.encode(root)})
+        cos_lib.profiles(config, root), cos_lib.since_days(DAYS), skip={root})
     n = cos_lib.inbox_count(root)
-    if not rows and not n:
+    if not rows and not n and not error:
         return
-    ctx = ""
+    ctx = WARNING.format(error=" ".join(error.split())) if error else ""
     if rows:
         ctx += HEAD.format(days=DAYS) + "\n".join(rows[:MAX_ROWS]) + "\n"
         if len(rows) > MAX_ROWS:

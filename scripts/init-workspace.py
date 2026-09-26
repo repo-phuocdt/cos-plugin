@@ -38,6 +38,11 @@ FILES = [
 # Files that start empty.
 EMPTY = [os.path.join("memory", "lessons.md"), cos_lib.INBOX]
 SETTINGS = os.path.join(".claude", "settings.json")
+GITIGNORE = ".gitignore"
+# The inbox files hold prompt text, so git must not pick them up by mistake.
+IGNORE_LINES = [cos_lib.INBOX, cos_lib.INBOX_READING, cos_lib.INBOX_SEEN]
+IGNORE_HEAD = "# Chief of Staff: these files hold prompt text. Keep them out of git."
+UNSET_VAR = re.compile(r"\$(\w+|\{\w+\})")
 # Built-in sub-agents are off in a workspace: the Chief of Staff starts other
 # agents only through Herdr (see the cos:delegation skill).
 DENY = ["Task", "Agent"]
@@ -64,6 +69,11 @@ def parse_profile(text):
     name, path = one_line(name), os.path.expandvars(path.strip())
     if not sep or not name or not path:
         raise argparse.ArgumentTypeError("use NAME=CONFIG_DIR, for example work=/home/me/.claude-work")
+    unset = UNSET_VAR.search(path)
+    if unset:
+        raise argparse.ArgumentTypeError(
+            "{} is not set, so the profile path {} is wrong. Set it, or use a full path."
+            .format(unset.group(0), path))
     return name, path
 
 
@@ -127,6 +137,30 @@ def merge_settings(root, report):
     report.append(("updated (deny " + ", ".join(missing) + ")", SETTINGS))
 
 
+def update_gitignore(root, report):
+    """Add the inbox files to .gitignore. Only appends; never changes a line."""
+    path = os.path.join(root, GITIGNORE)
+    lines = [rel.replace(os.sep, "/") for rel in IGNORE_LINES]
+    if not os.path.lexists(path):
+        write_new(root, GITIGNORE, "\n".join([IGNORE_HEAD] + lines) + "\n", report)
+        return
+    if os.path.islink(path) or not os.path.isfile(path):
+        report.append(("SKIPPED (not a plain file; add the inbox lines by hand)", GITIGNORE))
+        return
+    with open(path, encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    have = {line.strip() for line in text.splitlines()}
+    missing = [line for line in lines if line not in have]
+    if not missing:
+        report.append(("kept", GITIGNORE))
+        return
+    with open(path, "a", encoding="utf-8") as f:
+        if text and not text.endswith("\n"):
+            f.write("\n")
+        f.write("\n".join([IGNORE_HEAD] + missing) + "\n")
+    report.append(("updated (+{} lines)".format(len(missing)), GITIGNORE))
+
+
 def main():
     ap = argparse.ArgumentParser(description="Create a Chief of Staff workspace.")
     ap.add_argument("--dir", default=os.getcwd(), help="workspace folder (default: current folder)")
@@ -163,10 +197,16 @@ def main():
     }
 
     marker = os.path.join(root, cos_lib.CONFIG_NAME)
-    if os.path.lexists(marker) and not cos_lib.load_config(root).get(cos_lib.MARKER_KEY):
-        print("error: {} belongs to some other tool (no \"{}\" key). Use another "
-              "folder for the workspace.".format(marker, cos_lib.MARKER_KEY), file=sys.stderr)
-        return 1
+    if os.path.lexists(marker):
+        old, error = cos_lib.read_config(root)
+        if error:
+            print("error: {} is broken ({}). Fix it, then run init again."
+                  .format(marker, " ".join(error.split())), file=sys.stderr)
+            return 1
+        if not old.get(cos_lib.MARKER_KEY):
+            print("error: {} belongs to some other tool (no \"{}\" key). Use another "
+                  "folder for the workspace.".format(marker, cos_lib.MARKER_KEY), file=sys.stderr)
+            return 1
 
     report = []
     try:
@@ -176,6 +216,7 @@ def main():
         for rel in EMPTY:
             write_new(root, rel, "", report)
         merge_settings(root, report)
+        update_gitignore(root, report)
         write_new(root, cos_lib.CONFIG_NAME,
                   json.dumps(config, indent=2, ensure_ascii=False) + "\n", report)
     except OSError as e:

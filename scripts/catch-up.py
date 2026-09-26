@@ -56,10 +56,7 @@ def cmd_project(profile_list, regex, path, since, cap):
         return 1
     floor = cos_lib.since_floor(since)
     sessions = []
-    for profile, name, d in found:
-        tag = "main"
-        if cos_lib.WORKTREE in name:
-            tag = "worktree " + name.split(cos_lib.WORKTREE)[-1]
+    for profile, tag, d in found:
         for f in glob.glob(os.path.join(d, "*.jsonl")):
             mtime = cos_lib.safe_mtime(f)
             if mtime is not None and (floor is None or mtime >= floor):
@@ -74,7 +71,7 @@ def cmd_project(profile_list, regex, path, since, cap):
         if not prompts:
             continue
         print("\n## {}  [{}, {}]".format(prompts[0][0], profile, tag))
-        for ts, text, is_first in prompts:
+        for ts, text, is_first, _ in prompts:
             # A correction answers an earlier turn, so it is never the first
             # prompt of a session. The first prompt is the task.
             mark = "!" if (not is_first and cos_lib.is_correction(regex, text)) else " "
@@ -91,7 +88,7 @@ def cmd_project(profile_list, regex, path, since, cap):
 def main():
     ap = argparse.ArgumentParser(
         description="Show what the principal did without the Chief of Staff.")
-    ap.add_argument("project", nargs="?", help="absolute path of the repo")
+    ap.add_argument("project", nargs="?", help="path of the repo (a --list row path works as it is)")
     ap.add_argument("--list", action="store_true", help="list every folder with sessions")
     ap.add_argument("--since", type=date_arg, help="YYYY-MM-DD, usually the date of the last log line")
     ap.add_argument("--days", type=count_arg, help="look back N days instead of --since")
@@ -103,10 +100,13 @@ def main():
         a.since = cos_lib.since_days(a.days)
 
     root = cos_lib.find_workspace(a.workspace)
+    config, error = cos_lib.read_config(root) if root else ({}, None)
     if not root:
         print("note: {} is not a CoS workspace, so only this session's Claude "
               "profile is read".format(a.workspace), file=sys.stderr)
-    config = cos_lib.load_config(root) if root else {}
+    elif error:
+        print("note: cos.json cannot be read ({}), so only this session's Claude "
+              "profile is read".format(" ".join(error.split())), file=sys.stderr)
     profile_list = cos_lib.profiles(config, root)
     if a.list:
         return cmd_list(profile_list, a.since)

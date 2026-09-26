@@ -221,15 +221,21 @@ still answers `agent_prompted`, so the call looks fine.
 
 Write the block above to a file inside the agent's working directory, then send
 one short line. The task file is a hand-off file (see `identity.md`). Before
-you write it, add the hand-off file names to the repo's `.git/info/exclude`,
-one per line, so no agent's `git add -A` can commit them:
+you write it, add the hand-off file names to the repo's git exclude file, so
+no agent's `git add -A` can commit them. This works in a normal repo and in a
+linked worktree, creates the folder when it is missing, and adds a name only
+once:
 
 ```bash
-printf '%s\n' .loop-task.md .lead-task.md .lead-report.md >> <repo>/.git/info/exclude
+(cd <repo> && f=$(git rev-parse --git-path info/exclude) &&
+ mkdir -p "$(dirname "$f")" &&
+ for n in .loop-task.md .lead-task.md .lead-report.md; do
+   grep -qxF "$n" "$f" 2>/dev/null || printf '%s\n' "$n" >> "$f"
+ done)
 ```
 
-Skip a name that is already there. Also add the line `Do not commit this
-file.` to the task file, and delete the file when the run ends.
+Also add the line `Do not commit this file.` to the task file, and delete the
+file when the run ends.
 
 ```bash
 herdr agent prompt maker "Read the file .loop-task.md in this directory and do exactly what it says."

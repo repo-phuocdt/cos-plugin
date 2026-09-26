@@ -86,13 +86,15 @@ The plugin folder is also a local marketplace (`.claude-plugin/marketplace.json`
    /cos:init name="Ada" language=English address=Sam profiles="work=/home/me/.claude-work,home=/home/me/.claude-home" runtimes=claude,codex
    ```
 
-3. It creates these files and never overwrites one that exists:
+3. It creates these files and never overwrites one that exists. If a
+   `.gitignore` is already there, it only adds the missing inbox lines:
 
    ```
    ~/cos
    ├── CLAUDE.md                  # loads identity.md and memory/index.md
    ├── identity.md                # the persona; edit it to add preferences
    ├── cos.json                   # name, language, address, profiles, runtimes
+   ├── .gitignore                 # keeps the inbox files out of git
    ├── .claude/settings.json      # turns off built-in sub-agents here
    └── memory/
        ├── index.md               # one line per project
@@ -137,7 +139,9 @@ and `CLAUDE.md` at init. To change them later, edit those files too.
 
 Both hooks first check that the session's folder is a CoS workspace: it holds
 a `cos.json` written by `/cos:init` (with `"cos_workspace": 1`) and a
-`memory/` folder. If not, they print nothing and write nothing.
+`memory/` folder. If not, they print nothing and write nothing. If `cos.json`
+has a typo and cannot be read, the folder still counts as a workspace: the
+hooks run with default settings, and SessionStart adds one warning line.
 
 - **SessionStart** (`scripts/session-start.py`) adds to the session's context
   the folders with Claude Code sessions in the last 7 days (from every profile
@@ -147,7 +151,9 @@ a `cos.json` written by `/cos:init` (with `"cos_workspace": 1`) and a
 - **SessionEnd** (`scripts/session-end.py`) appends one JSON line to
   `memory/inbox.jsonl`: the time, the reason, the profile, the number of human
   prompts, the first prompt, and up to six prompts that look like corrections.
-  Nothing is written for a session where no human typed a prompt. The CoS
+  Each prompt is recorded once, even when a session is resumed: the hook
+  keeps the keys of recorded prompts in `memory/.inbox-seen.json`. Nothing is
+  written when there is no new human prompt. The CoS
   turns these lines into notes at the next session start, then clears the
   inbox.
 
@@ -160,8 +166,8 @@ echo '{"session_id": "abc123", "cwd": "/home/me/cos", "transcript_path": "/path/
 ```
 
 Privacy: the inbox holds the first 200 characters of your prompts. It stays in
-your workspace folder. Do not commit it to a shared repo if your prompts hold
-private data.
+your workspace folder, and `/cos:init` adds the inbox files to `.gitignore` so
+git does not pick them up by mistake.
 
 ## Skills
 

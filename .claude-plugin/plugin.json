@@ -1,7 +1,7 @@
 {
   "name": "cos",
   "displayName": "Chief of Staff",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Your own Chief of Staff agent: a persona, one memory file per project, intake, delegation through Herdr, and session hooks.",
   "author": {
     "name": "cos-plugin contributors"
