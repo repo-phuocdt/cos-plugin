@@ -1,7 +1,8 @@
 """Shared helpers for the cos plugin scripts.
 
-A CoS workspace is a folder that holds a `cos.json` file. `/cos:init` creates
-it. Every hook checks for that file first and does nothing when it is missing.
+A CoS workspace is a folder with a `cos.json` that `/cos:init` wrote (it has
+the key "cos_workspace") and a `memory/` folder. Every hook checks for both
+first and does nothing when either is missing.
 
 Only the Python standard library is used, so the plugin needs no install step.
 """
@@ -12,14 +13,20 @@ import json
 import os
 import re
 import sys
+import unicodedata
 
 CONFIG_NAME = "cos.json"
+MARKER_KEY = "cos_workspace"
 INBOX = os.path.join("memory", "inbox.jsonl")
 
 # Claude Code stores the transcripts of a folder under
 # <config dir>/projects/<encoded cwd>/, where every character that is not a
-# letter or a digit becomes "-".
+# letter or a digit becomes "-". A name longer than 200 characters is cut at
+# 200 and gets "-<hash>" at the end. A worktree under <repo>/.claude/worktrees/
+# encodes as "<repo>--claude-worktrees-<name>".
 ENCODE = re.compile(r"[^A-Za-z0-9]")
+MAX_ENCODED = 200
+WORKTREE = "--claude-worktrees-"
 
 # A correction is a prompt that turns the agent around. Only the opening of a
 # prompt counts: "do not touch X" late in a task is an instruction, but "no, do
@@ -32,9 +39,9 @@ CORRECTION_WORDS = [
     "redo",
 ]
 
-# Prompts the Chief of Staff sends to a delegate point at a task file. They
-# are already written down in memory/projects/, so they are noise here.
-COS_PROMPT = re.compile(r"\.(loop|lead)-(task|answers)\.md", re.IGNORECASE)
+# The one-line prompt the Chief of Staff sends to a delegate. The task itself
+# is already written down in memory/projects/, so this prompt is noise here.
+COS_PROMPT = re.compile(r"^Read (the file )?\.(loop|lead)-task\.md\b", re.IGNORECASE)
 
 # Text the CLI puts into a user turn. No human typed any of it.
 MACHINE_PREFIX = (
@@ -44,7 +51,8 @@ MACHINE_PREFIX = (
     "<bash-input>", "<bash-stdout>", "<bash-stderr>",
 )
 
-# A slash command arrives wrapped. The human words are inside <command-args>.
+# A slash command arrives wrapped in tags. The human words are in <command-args>.
+SLASH_PREFIX = ("<command-name>", "<command-message>")
 SLASH_NAME = re.compile(r"<command-name>/?([^<]+)</command-name>")
 SLASH_ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.S)
 
@@ -60,18 +68,8 @@ def read_payload():
     return data if isinstance(data, dict) else {}
 
 
-def find_workspace(path):
-    """Return the absolute path when it is a CoS workspace root, else None."""
-    if not path:
-        return None
-    path = os.path.abspath(os.path.expanduser(path))
-    if os.path.isfile(os.path.join(path, CONFIG_NAME)):
-        return path
-    return None
-
-
 def load_config(root):
-    """Read cos.json. A missing or broken file gives an empty config."""
+    """Read cos.json. Return {} when it is missing, broken, or not an object."""
     try:
         with open(os.path.join(root, CONFIG_NAME), encoding="utf-8") as f:
             data = json.load(f)
@@ -80,8 +78,34 @@ def load_config(root):
     return data if isinstance(data, dict) else {}
 
 
-def expand(path):
-    return os.path.abspath(os.path.expanduser(path))
+def find_workspace(path):
+    """Return the absolute path when it is a CoS workspace root, else None.
+
+    Some other tool's cos.json does not count: the file must hold the marker
+    key that /cos:init writes, and memory/ must exist.
+    """
+    if not isinstance(path, str) or not path:
+        return None
+    root = os.path.abspath(os.path.expanduser(path))
+    if load_config(root).get(MARKER_KEY) and os.path.isdir(os.path.join(root, "memory")):
+        return root
+    return None
+
+
+def workspace_from_hook(payload):
+    """The workspace of a hook run: the session's cwd, else the project dir."""
+    cwd = payload.get("cwd")
+    if not isinstance(cwd, str) or not cwd:
+        cwd = os.getcwd()
+    return find_workspace(cwd) or find_workspace(os.environ.get("CLAUDE_PROJECT_DIR"))
+
+
+def expand(path, base=None):
+    """Absolute path. "~" is expanded; a relative path is read from base."""
+    path = os.path.expanduser(path)
+    if base and not os.path.isabs(path):
+        path = os.path.join(base, path)
+    return os.path.abspath(path)
 
 
 def current_config_dir():
@@ -89,52 +113,85 @@ def current_config_dir():
     return expand(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude")
 
 
-def profiles(config):
+def profiles(config, root=None):
     """Return (name, config_dir) for every Claude profile to scan.
 
-    The list comes from "profiles" in cos.json. With no profiles set, it is
-    the config dir of this process. When profiles are set and ~/.claude is not
-    one of them, ~/.claude is added as "unknown": a session there ran on an
-    account the principal did not list.
+    The list comes from "profiles" in cos.json; a relative config_dir is read
+    from the workspace root. With no profiles set, it is the config dir of this
+    process. When profiles are set and ~/.claude is not one of them, ~/.claude
+    is added as "unknown": a session there ran on an account the principal did
+    not list.
     """
-    out = []
-    for p in config.get("profiles") or []:
-        if isinstance(p, dict) and isinstance(p.get("config_dir"), str) and p["config_dir"].strip():
-            path = expand(p["config_dir"].strip())
-            name = str(p.get("name") or os.path.basename(path).lstrip(".") or "default")
-            out.append((name, path))
+    out, seen = [], set()
+    items = config.get("profiles")
+    for p in items if isinstance(items, list) else []:
+        if not isinstance(p, dict) or not isinstance(p.get("config_dir"), str):
+            continue
+        if not p["config_dir"].strip():
+            continue
+        path = expand(p["config_dir"].strip(), root)
+        if os.path.realpath(path) in seen:
+            continue
+        seen.add(os.path.realpath(path))
+        name = str(p.get("name") or os.path.basename(path).lstrip(".") or "default")
+        out.append((name, path))
     if not out:
         return [("default", current_config_dir())]
     default = expand("~/.claude")
-    if default not in [path for _, path in out]:
+    if os.path.realpath(default) not in seen:
         out.append(("unknown", default))
     return out
 
 
-def profile_name(config, config_dir):
+def profile_name(config, config_dir, root=None):
     """Name of the profile that owns config_dir, or "unknown" when cos.json
-    does not list it."""
-    for name, path in profiles(config):
-        if path == config_dir:
+    does not list it. Paths are compared after symlinks are resolved."""
+    real = os.path.realpath(config_dir)
+    for name, path in profiles(config, root):
+        if os.path.realpath(path) == real:
             return name
     return "unknown"
 
 
+def normalize(text):
+    return unicodedata.normalize("NFC", text)
+
+
 def correction_re(config):
     """Regex for a correction: the English words plus cos.json correction_words."""
-    extra = config.get("correction_words") or []
+    extra = config.get("correction_words")
+    extra = extra if isinstance(extra, list) else []
     words = CORRECTION_WORDS + [w.strip() for w in extra if isinstance(w, str) and w.strip()]
-    alt = "|".join(re.escape(w) for w in words)
-    return re.compile(r"(?<!\w)(" + alt + r")(?!\w)", re.IGNORECASE)
+    parts = []
+    for word in words:
+        word = normalize(word)
+        if any(unicodedata.east_asian_width(c) in "WF" for c in word):
+            # Chinese, Japanese, and similar scripts use no spaces between
+            # words, so a word boundary check would never match.
+            parts.append(re.escape(word))
+        else:
+            parts.append(r"(?<!\w)" + re.escape(word) + r"(?!\w)")
+    return re.compile("|".join(parts), re.IGNORECASE)
+
+
+def is_correction(regex, text):
+    return bool(regex.search(normalize(text)[:CORRECTION_HEAD]))
 
 
 def encode(path):
     return ENCODE.sub("-", expand(path))
 
 
+def dir_matches(name, want):
+    """True when transcript dir `name` belongs to the folder encoded as `want`."""
+    if len(want) > MAX_ENCODED:
+        return name.startswith(want[:MAX_ENCODED] + "-")
+    return name == want or name.startswith(want + WORKTREE)
+
+
 def unwrap(text):
     """Return the human part of a turn, or None if a machine wrote all of it."""
-    if "<command-args>" in text:
+    if text.startswith(SLASH_PREFIX):
         args = SLASH_ARGS.search(text)
         args = args.group(1).strip() if args else ""
         name = SLASH_NAME.search(text)
@@ -146,8 +203,25 @@ def unwrap(text):
     return text
 
 
+def local_minute(ts):
+    """Transcript times are UTC ("...Z"). Return local time as YYYY-MM-DDTHH:MM."""
+    if not isinstance(ts, str) or not ts:
+        return ""
+    try:
+        t = dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return ts[:16]
+    if t.tzinfo is not None:
+        t = t.astimezone()
+    return t.strftime("%Y-%m-%dT%H:%M")
+
+
 def human_prompts(jsonl_path, since=None):
-    """Yield (timestamp, text, is_first_of_session) for real human turns."""
+    """Yield (local time, text, is_first_of_session) for real human turns.
+
+    since is a local date, YYYY-MM-DD. The first human prompt of the session
+    is marked even when since hides it.
+    """
     first = True
     with open(jsonl_path, encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -157,7 +231,9 @@ def human_prompts(jsonl_path, since=None):
                 rec = json.loads(line)
             except ValueError:
                 continue
-            if not isinstance(rec, dict) or rec.get("type") != "user" or rec.get("isSidechain"):
+            if not isinstance(rec, dict) or rec.get("type") != "user":
+                continue
+            if rec.get("isSidechain") or rec.get("isMeta") or rec.get("isCompactSummary"):
                 continue
             message = rec.get("message")
             content = message.get("content") if isinstance(message, dict) else None
@@ -171,73 +247,109 @@ def human_prompts(jsonl_path, since=None):
             text = unwrap(content.strip())
             if not text or COS_PROMPT.search(text):
                 continue
-            ts = str(rec.get("timestamp") or "")[:16]
+            is_first, first = first, False
+            ts = local_minute(rec.get("timestamp"))
             if since and ts and ts[:10] < since:
                 continue
-            yield ts, " ".join(text.split()), first
-            first = False
+            yield ts, " ".join(text.split()), is_first
 
 
-def is_correction(regex, text):
-    return bool(regex.search(text[:CORRECTION_HEAD]))
+def safe_mtime(path):
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return None
 
 
-def short_name(encoded):
-    """Turn an encoded transcript dir name into something a person can read."""
-    home = encode("~")
-    if encoded == home:
+def safe_listdir(path):
+    try:
+        return sorted(os.listdir(path))
+    except OSError:
+        return []
+
+
+def session_cwd(jsonl_path):
+    """The folder a session ran in, read from its first records."""
+    try:
+        with open(jsonl_path, encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                if i >= 50:
+                    break
+                if '"cwd"' not in line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(rec, dict) and isinstance(rec.get("cwd"), str):
+                    return rec["cwd"]
+    except OSError:
+        pass
+    return None
+
+
+def display_path(path):
+    home = os.path.expanduser("~")
+    if path == home:
         return "~"
-    if encoded.startswith(home + "-"):
-        return "~/" + encoded[len(home) + 1:]
-    return encoded
+    if path.startswith(home + os.sep):
+        return "~" + path[len(home):]
+    return path
+
+
+def since_floor(since):
+    """Local midnight of a YYYY-MM-DD date, as a timestamp."""
+    return dt.datetime.fromisoformat(since).timestamp() if since else None
 
 
 def since_days(days):
     return str(dt.date.today() - dt.timedelta(days=days))
 
 
-def list_rows(profile_list, since=None):
-    """One line per folder with sessions, newest first."""
-    floor = dt.datetime.fromisoformat(since).timestamp() if since else None
+def list_rows(profile_list, since=None, skip=()):
+    """One line per folder with sessions, newest first.
+
+    Each row shows the folder the newest session ran in, so it can be passed
+    to catch-up.py as it is. skip holds encoded dir names to leave out.
+    """
+    floor = since_floor(since)
     rows = []
     for profile, config_dir in profile_list:
         root = os.path.join(config_dir, "projects")
-        if not os.path.isdir(root):
-            continue
-        for name in sorted(os.listdir(root)):
-            files = glob.glob(os.path.join(root, name, "*.jsonl"))
-            if floor is not None:
-                files = [f for f in files if os.path.getmtime(f) >= floor]
+        for name in safe_listdir(root):
+            if name in skip:
+                continue
+            files = []
+            for path in glob.glob(os.path.join(root, name, "*.jsonl")):
+                mtime = safe_mtime(path)
+                if mtime is not None and (floor is None or mtime >= floor):
+                    files.append((mtime, path))
             if not files:
                 continue
-            last = max(os.path.getmtime(f) for f in files)
-            rows.append((last, profile, short_name(name), len(files)))
+            last, newest = max(files)
+            where = session_cwd(newest)
+            where = display_path(where) if where else name
+            rows.append((last, profile, where, len(files)))
     return [
         "{:%Y-%m-%d %H:%M}  {:<10} {:>3} sessions  {}".format(
-            dt.datetime.fromtimestamp(last), profile, n, name)
-        for last, profile, name, n in sorted(rows, reverse=True)
+            dt.datetime.fromtimestamp(last), profile, n, where)
+        for last, profile, where, n in sorted(rows, reverse=True)
     ]
 
 
 def transcript_dirs(profile_list, project_path):
-    """Every transcript dir for this folder, including its worktrees.
-
-    A worktree under <repo>/.claude/worktrees/ encodes as "<repo>--claude-...",
-    so the double dash keeps a sibling folder like "<repo>-old" out.
-    """
+    """Every transcript dir for this folder, including its worktrees."""
     want = encode(project_path)
     for profile, config_dir in profile_list:
         root = os.path.join(config_dir, "projects")
-        if not os.path.isdir(root):
-            continue
-        for name in sorted(os.listdir(root)):
-            if name == want or name.startswith(want + "--"):
+        for name in safe_listdir(root):
+            if dir_matches(name, want):
                 yield profile, name, os.path.join(root, name)
 
 
 def inbox_count(root):
     try:
-        with open(os.path.join(root, INBOX), encoding="utf-8") as f:
+        with open(os.path.join(root, INBOX), encoding="utf-8", errors="replace") as f:
             return sum(1 for line in f if line.strip())
     except OSError:
         return 0

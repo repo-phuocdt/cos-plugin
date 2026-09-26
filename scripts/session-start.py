@@ -3,11 +3,12 @@
 
 It adds two things to the new session's context:
   - the folders with Claude Code sessions in the last 7 days, from every
-    profile listed in cos.json (work the Chief of Staff may not have seen);
+    profile listed in cos.json (work the Chief of Staff may not have seen).
+    The workspace itself is left out;
   - how many records wait in memory/inbox.jsonl.
 
-Outside a CoS workspace (no cos.json in the session's folder) it prints
-nothing. It always exits 0: a broken hook must never block a session.
+Outside a CoS workspace it prints nothing. It always exits 0: a broken hook
+must never block a session.
 """
 
 import json
@@ -27,6 +28,7 @@ HEAD = (
     "Claude Code sessions on this machine, all profiles in cos.json, last {days} "
     "days. The Chief of Staff did not see most of this work.\n"
 )
+MORE = "... and {n} more folder(s). Run the catch-up script with --list to see all.\n"
 TAIL = (
     "\nCompare each row with memory/index.md:\n"
     "- a project you own, with sessions newer than its last Log line -> your notes are behind\n"
@@ -38,23 +40,28 @@ INBOX = (
     "\nINBOX: {n} session record(s) wait in memory/inbox.jsonl. The SessionEnd "
     "hook wrote one per past session in this workspace, with its first prompt "
     "and any correction the principal made. Turn them into a lesson or a "
-    "project note, then empty the file. See the cos:session-start skill.\n"
+    "project note, then clear the inbox. See the cos:session-start skill.\n"
 )
 
 
 def main():
     payload = cos_lib.read_payload()
-    root = cos_lib.find_workspace(payload.get("cwd") or os.getcwd())
+    root = cos_lib.workspace_from_hook(payload)
     if not root:
         return
     config = cos_lib.load_config(root)
-    rows = cos_lib.list_rows(cos_lib.profiles(config), cos_lib.since_days(DAYS))
+    rows = cos_lib.list_rows(
+        cos_lib.profiles(config, root), cos_lib.since_days(DAYS),
+        skip={cos_lib.encode(root)})
     n = cos_lib.inbox_count(root)
     if not rows and not n:
         return
     ctx = ""
     if rows:
-        ctx += HEAD.format(days=DAYS) + "\n".join(rows[:MAX_ROWS]) + "\n" + TAIL
+        ctx += HEAD.format(days=DAYS) + "\n".join(rows[:MAX_ROWS]) + "\n"
+        if len(rows) > MAX_ROWS:
+            ctx += MORE.format(n=len(rows) - MAX_ROWS)
+        ctx += TAIL
     if n:
         ctx += INBOX.format(n=n)
     json.dump({"hookSpecificOutput": {

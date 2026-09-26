@@ -52,8 +52,8 @@ herdr agent list
 herdr pane list --workspace "$HERDR_WORKSPACE_ID"
 ```
 
-An agent named `maker`, `verifier`, `lead`, or `scout` that belongs to no live
-run is left over from an old session. Close the pane you own. Do not close a
+An agent that no `Node` line in a `## Current run` block names is left over
+from an old session. Close the pane you own. Do not close a
 pane you did not create, and never run `herdr server stop`.
 
 ### 4. Index drift
@@ -69,8 +69,10 @@ line means the last session did not finish hard rule 3 in `CLAUDE.md`.
 
 **The SessionStart hook already did this one.** The `cos` plugin lists the
 folders with Claude Code sessions in the last 7 days, from every profile in
-`cos.json`, so that list is in your context before you read this page. Run
-the command yourself only when you need a wider window:
+`cos.json`, so that list is in your context before you read this page. It
+leaves out this workspace itself. Each row ends with the folder path, which the
+catch-up script takes as it is. Run the command yourself only when you need a
+wider window:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/catch-up.py" --list --since <YYYY-MM-DD>
@@ -92,11 +94,18 @@ end of every session in this workspace. The SessionStart hook tells you how
 many are waiting. Each line holds the first prompt and the prompts that read
 like a correction — the places where the principal turned you around.
 
-Read them, then act on each one:
+If `memory/inbox.reading.jsonl` is already there, a past session stopped
+halfway. Handle its lines first, then delete it.
+
+Move the inbox aside before you read it, so a session that ends while you work
+does not lose its line. Then read it, one record per line:
 
 ```bash
-python3 -c "import json;[print(json.loads(l)) for l in open('memory/inbox.jsonl') if l.strip()]"
+mv memory/inbox.jsonl memory/inbox.reading.jsonl
+cat memory/inbox.reading.jsonl
 ```
+
+Act on each line:
 
 | The record shows | You |
 |---|---|
@@ -110,10 +119,10 @@ A correction word list only guesses. The English words are built in; words in
 the principal's own language go in `cos.json` under `correction_words`. Read the
 line before you trust the mark.
 
-Then empty the file, so the next session starts clean:
+When every line is handled, delete the copy:
 
 ```bash
-: > memory/inbox.jsonl
+rm memory/inbox.reading.jsonl
 ```
 
 ## What you say
@@ -131,5 +140,5 @@ If everything is clean, say it in one line and stop. Do not print the checks.
 ## What this is not
 
 This is not a plan and not a report. Do not write a file, except the notes and
-the emptied inbox from check 6. Do not start an agent during session start. You
+the inbox steps from check 6. Do not start an agent during session start. You
 are only reading state and handing the principal the choice.

@@ -2,11 +2,14 @@
   "hooks": {
     "SessionStart": [
       {
+        "matcher": "startup|clear|compact",
         "hooks": [
           {
             "type": "command",
             "command": "python3",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/session-start.py"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/session-start.py"
+            ],
             "timeout": 15
           }
         ]
@@ -18,7 +21,9 @@
           {
             "type": "command",
             "command": "python3",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/session-end.py"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/session-end.py"
+            ],
             "timeout": 15
           }
         ]

@@ -19,7 +19,8 @@ design.
 
 Why: a Herdr agent is a **main agent**. It has its own full context window, its
 own model, and its own session. A sub-agent is a short-lived helper inside your
-own context. You want peers you can talk to over time, not helpers you burn.
+own context. You want peers you can talk to over time, not short-lived
+helpers you throw away.
 
 The rule is about who does the work, not only about which tool starts an
 agent. A read, a grep, a `cat`, or a test run inside another repo is the
@@ -57,8 +58,9 @@ a stop rule, load the `cos:loop` skill.
      --env CLAUDE_CONFIG_DIR=<profile config_dir>
    ```
 
-   Always set the profile on the pane. A pane outlives one agent, and the next
-   Claude agent that lands there takes that account. Read the new pane id from
+   Always set the profile on the pane. Use the full path from `cos.json`, not
+   `~`: a shell does not always expand `~` there. A pane outlives one agent,
+   and the next Claude agent that lands there takes that account. Read the new pane id from
    `.result.pane.pane_id`.
 4. **Start the agent** with a name that says its job:
 
@@ -88,7 +90,7 @@ a stop rule, load the `cos:loop` skill.
    herdr agent read reviewer --source recent-unwrapped --lines 150
    ```
 
-7. **Decide.** Accept, send a follow-up prompt, or escalate to the principal.
+7. **Decide.** Accept, send a follow-up prompt, or bring it to the principal.
 8. **Close the pane** when the job is done, so the screen and the machine stay
    clean:
 
@@ -108,22 +110,22 @@ applies when they did ask.
 
 A worktree does not carry untracked files. If the repo keeps `.claude/`,
 `CLAUDE.md`, or a plans folder untracked, the maker starts with none of the
-rules it is told to follow. Before step 3 (open a pane) when the target is a
-fresh worktree, run:
+rules it is told to follow. When the target is a fresh worktree, make this the
+first step in the task file, before any other work:
 
 ```bash
-git status --ignored --short
+git status --ignored --short   # in the main repo
 ```
 
-Copy any untracked rules file into the worktree, and say in the task file
-that it is there.
+The agent copies any untracked rules file into the worktree. That is the
+agent's job, not yours (hard rule 1 in `CLAUDE.md`).
 
 ## Never block the session
 
-Your session is the principal's desk. A `--wait` call holds that desk for as
-long as the agent runs, so the principal cannot give you the next job. That is
-the wrong trade: the agent has its own pane and its own context, and it keeps
-working whether you watch it or not.
+Your session is where the principal talks to you. A `--wait` call blocks it
+for as long as the agent runs, so the principal cannot give you the next job.
+That is a bad trade: the agent has its own pane and its own context, and it
+keeps working whether you watch it or not.
 
 Rules:
 
@@ -171,9 +173,9 @@ When you come back, read the agent. Three states:
 | `blocked` | read its output, answer it, or bring the question to the principal |
 | `done` | read the result and run the `decide` node in the `cos:loop` skill |
 
-The one time waiting is fine: a job you expect to end in seconds, like a scout
-that answers five lines. Even then, cap it — `--wait --timeout 120000` — and
-never on a maker or a verifier.
+**One exception** to the no-`--wait` rule: a job you expect to end in
+seconds, like a scout that answers five lines. Even then, cap it —
+`--wait --timeout 120000` — and never on a maker or a verifier.
 
 ## Parallel work
 
@@ -217,7 +219,8 @@ as "send", so the task arrives cut into pieces, or does not arrive at all. Herdr
 still answers `agent_prompted`, so the call looks fine.
 
 Write the block above to a file inside the agent's working directory, then send
-one short line:
+one short line. The task file is a hand-off file (see `identity.md`): add the
+line `Do not commit this file.` to it, and delete it when the run ends.
 
 ```bash
 herdr agent prompt maker "Read the file .loop-task.md in this directory and do exactly what it says."

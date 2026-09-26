@@ -36,7 +36,8 @@ which one a new agent should use.
   agent.** Work paid by one account must not run on another. This is not a
   routine call you may make yourself.
 
-Set it on the pane, then start the agent in that pane:
+Set it on the pane with the full path from `cos.json` (not `~`, which a shell
+does not always expand there), then start the agent in that pane:
 
 ```bash
 herdr pane split --current --direction right --cwd <project-path> --no-focus \
@@ -48,28 +49,28 @@ Keep the profile flag on every `pane split`, even for a non-Claude pane. A
 pane outlives one agent, so the next Claude agent that lands there takes that
 account. Other kinds ignore the variable.
 
-## How I pick the model
+## How to pick the model
 
-I stay on a strong model. I do not switch myself down and do the work. I read
-the ticket, judge how hard it is, then start a **separate** agent on the model
-that fits. Same idea as a tech lead: the lead does not become the junior, the
+You stay on a strong model. You do not switch yourself down and do the work.
+You read the ticket, judge how hard it is, then start a **separate** agent on
+the model that fits. Same idea as a tech lead: the lead does not become the junior, the
 lead hands the job to the right person.
 
-Two reasons this matters. I keep my context free to judge the result when the
-maker reports back. And the maker gets a clean context that holds only its own
-task, not my triage.
+Two reasons this matters. You keep your context free to judge the result when
+the maker reports back. And the maker gets a clean context that holds only its
+own task, not your sorting work.
 
 ### Step 1 — know the code first
 
 Hardness is not in the ticket. "Login button does nothing" can be a CSS z-index
-fix or a broken token refresh. If I judge from the ticket text alone, I am
-guessing.
+fix or a broken token refresh. If you judge from the ticket text alone, you
+are guessing.
 
-So before I pick a model:
+So before you pick a model:
 
-- Read `memory/projects/<slug>.md`. If I have touched this area before, the
-  notes already tell me what I need. Skip to step 2.
-- If I have not, start a cheap `scout` agent on a small model. Give it the
+- Read `memory/projects/<slug>.md`. If you have worked in this area before,
+  the notes already tell you what you need. Skip to step 2.
+- If you have not, start a cheap `scout` agent on a small model. Give it the
   ticket and the repo path. Ask for exactly five lines back:
 
 ```
@@ -89,21 +90,21 @@ next ticket cheap.
 
 ### Step 2 — two yes/no questions
 
-I do not score 1 to 5. I would score it differently each session. Two binary
+Do not score 1 to 5. You would score it differently each session. Two yes/no
 questions stay stable:
 
-1. **Can I write a concrete acceptance test?** The `cos:delegation` skill
-   already makes me do this. If I cannot write it, the ticket is still unclear.
+1. **Can you write a concrete acceptance test?** The `cos:delegation` skill
+   already makes you do this. If you cannot, the ticket is still unclear.
 2. **Is being wrong expensive?** Yes when scout says it touches a public
    contract, schema, auth, or money — or when there are no tests. No tests
    means no safety net.
 
 | Acceptance test | Wrong is expensive | Lane |
 |---|---|---|
-| I can write it | no | small model, go straight to work |
-| I can write it | yes | strong model, plus a verifier agent |
-| I cannot write it | no | strong model to **plan only**, then a small model to code it |
-| I cannot write it | yes | stop and ask the principal |
+| you can write it | no | small model, go straight to work |
+| you can write it | yes | strong model, plus a verifier agent |
+| you cannot write it | no | strong model to **plan only**, then a small model to code it (the one exception to gate 1 in `cos:loop`) |
+| you cannot write it | yes | stop and ask the principal |
 
 The last row is the important one. Unclear **and** expensive is not a model
 problem. It is a missing decision. Spending a strong model there only buys a
@@ -156,7 +157,7 @@ Rules:
 
 ### Step 4 — expect to guess wrong
 
-I do not need the first guess to be right. I need it to be cheap and to fail
+The first guess does not need to be right. It needs to be cheap and to fail
 loudly. Start at the cheapest sane lane. When the first verify round fails and
 the cause looks like the model was too weak for the job, spend the **second**
 retry on a stronger model instead of the same one.
@@ -167,7 +168,7 @@ principal.
 
 Signals that the lane was wrong, not the code:
 
-- the maker asks a second question — the ticket is less clear than I thought,
+- the maker asks a second question — the ticket is less clear than you thought,
   so this is the "plan first" row, not a stronger maker
 - the diff touches more than twice the files scout expected — this is a misread
   task, so **stop**. Do not move up, do not retry.
@@ -179,7 +180,7 @@ the same task file. Never change model mid-run.
 
 You are the reasoning layer. Other agents are the execution layer. If you are
 about to do a large mechanical task yourself — read 20 files, run a big
-refactor, grind through a test suite — stop and delegate it. Your context is the
+refactor, work through a whole test suite — stop and delegate it. Your context is the
 scarce thing; keep it for the decisions.
 
 ## Per-project override

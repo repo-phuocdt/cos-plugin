@@ -17,7 +17,8 @@ agents, checks their work, and stops on its own.
 
 **Who runs the loop is a choice.** This page has you drive every node. That
 fits a small, single-file job. For a real ticket, hand the whole loop to one
-lead agent instead and keep your desk free — see the `cos:lead-agent` skill.
+lead agent instead and stay free to talk to the principal — see the
+`cos:lead-agent` skill.
 The gates below do not change; they move into the lead's brief as rules.
 
 ## The one loop we run
@@ -30,7 +31,7 @@ frame -> plan -> implement -> verify -> decide -> [back to implement | open PR]
 ```
 
 There is only one loop here on purpose. Do not add a second loop, a second
-orchestrator, or parallel makers until one of these is true: two changes touch
+controller agent, or parallel makers until one of these is true: two changes touch
 different files and both are urgent, or a step needs a different permission
 level, or a failure in one part must not stop the other.
 
@@ -77,7 +78,7 @@ Cutting planning saves time. Cutting proof only moves the cost to the PR.
 | plan | a delegate agent | Read the code. Say which files change and how. No edits yet. |
 | implement | a delegate agent | Change the code. |
 | verify | a **different** delegate agent | Run the acceptance command. Judge the diff. |
-| decide | you (CoS) | Pass, retry, or escalate. |
+| decide | you (CoS) | Pass, retry, or bring it to the principal. |
 | pr | you (CoS) | Commit, then PR if the repo has a remote. Then stop. |
 | record | you (CoS) | Update `memory/projects/<slug>.md`. |
 
@@ -90,8 +91,13 @@ A gate is a hard rule. It lives here, not inside a prompt.
 
 1. **No acceptance command, no start.** If you cannot write a command that
    proves the work is done, you are not ready. Ask the principal instead.
+   One exception: the "plan only" row in the `cos:model-routing` skill. There
+   a strong model reads the code and proposes the acceptance command, with no
+   edits. No code starts until you have that command and the principal has
+   said yes to it.
 2. **The maker never grades itself.** `verify` runs as a separate Herdr agent,
-   started in a fresh pane, ideally a different `--kind`. It never reads the
+   started in a fresh pane, ideally on a different model, or a different
+   `--kind` when `runtimes` in `cos.json` allows one. It never reads the
    maker's chat.
 3. **Verify must show output.** The verifier pastes the real command output. A
    claim of "tests pass" without output is a fail.
@@ -101,41 +107,40 @@ A gate is a hard rule. It lives here, not inside a prompt.
    check shown, no PASS.
 
    **Typecheck and unit tests are not enough for anything a user sees or
-   does.** They prove the code compiles and the functions it calls behave in
-   isolation — not that the app still opens, that a screen still renders, or
-   that a click still does the thing. Code can review clean with every check
-   green and still crash the moment a person runs it. So: for any change that
-   touches a route, a screen, or a user-visible flow, the acceptance list is
-   not complete until it includes actually starting the app and going through
-   that flow — a browser tool, a screenshot, a captured console log, or (for
-   a backend or CLI change with no UI) the real command run against real
-   input, not a mock. Add this to the acceptance command at frame time, not as
-   an afterthought at verify time.
+   does.** They prove the code compiles and each function works on its own.
+   They do not prove that the app still opens, that a screen still renders,
+   or that a click still does the thing. Code can pass review with every
+   check green and still crash the moment a person runs it. So a change that
+   touches a route, a screen, or a user-visible flow needs one more
+   acceptance check: start the app and go through that flow. Use a browser
+   tool, a screenshot, or a captured console log. For a backend or CLI change
+   with no UI, run the real command on real input, not a mock. Add this check
+   when you frame the job, not later at verify time.
 4. **Retry budget is 2.** After 2 failed verify rounds, stop the loop and bring
    the verifier's findings to the principal. Do not try a third time.
 5. **Stop before the principal's review.** The stop point depends on the repo:
-   - has a remote -> push the branch and open a PR with the repo's own tool
-     (`gh` for GitHub, the web UI for other hosts).
+   - has a remote -> ask the principal first (`identity.md` says to ask
+     before any push). Then push the branch and open a PR with the repo's own
+     tool (`gh` for GitHub, the web UI for other hosts).
    - no remote -> commit on a branch and stop there.
    The loop never merges, never pushes to the main branch, never force pushes,
    never deletes a branch, never commits a secret. Any of these needs the
    principal to say yes first.
 
    **A live check the verifier cannot run is a stop, not a skip.** If gate 3's
-   runtime check is blocked — no authenticated session, no seeded data, no
-   working local environment — that is not a "known gap" to note in the PR
-   body and ship past. It means the diff has never actually run. Stop the
-   loop before the PR and tell the principal exactly what is blocked and what
-   would unblock it (a test account, a seed script, a stored session). They
-   either unblock it so the check can run for real, or they knowingly accept
-   the risk — but that is their call to make before it ships, not something
-   the loop decides for them by staying quiet. A blocker seen twice on one
-   repo is an open item in `memory/projects/<slug>.md`, not a recurring
-   footnote.
+   runtime check is blocked — no logged-in session, no test data, no working
+   local environment — do not write it down as a "known gap" and ship anyway.
+   It means the diff has never actually run. Stop the loop before the PR and
+   tell the principal exactly what is blocked and what would unblock it (a
+   test account, a seed script, a stored session). They either unblock it so
+   the check can run for real, or they accept the risk on purpose. That is
+   their call, made before it ships. A blocker seen twice on one repo is an
+   open item in `memory/projects/<slug>.md`, not a note you repeat in every
+   PR.
 6. **No plan, no code.** The maker says what it will change before it changes
    it. In a full run that is its own step and you approve it. In a short run it
    is one line in its first reply. Either way, a plan that names files you did
-   not expect is a misread task — fix the frame, do not wave it through.
+   not expect is a misread task — fix the frame, do not accept the plan.
 7. **No worktree unless the principal asks for one.** The agent works in the
    project directory on a branch. Create a worktree only when the principal
    says so, in that run. Do not add one because the change looks big.
@@ -234,8 +239,10 @@ open.
      Bump `Round` in the project file. Go back to step 4.
    - `FAIL` and round = 2 -> close the panes, tell the principal what failed,
      stop.
-6. **pr** — commit on the branch. Push and open a PR only if the repo has a
-   remote. Do not merge. Tell the principal the URL or the branch name.
+6. **pr** — commit on the branch. Leave the hand-off files (`.loop-task.md`,
+   `.lead-task.md`, `.lead-report.md`) out of the commit. Push and open a PR
+   only if the repo has a remote and the principal said yes. Do not merge.
+   Tell the principal the URL or the branch name.
 7. **record** — close every pane you opened. Update the project file: add one
    log line, remove `## Current run`. Then ask one question: did an agent or a
    tool behave in a way you did not expect? If yes, add a lesson to
@@ -284,4 +291,4 @@ Watch for these. They are the normal ways a loop goes wrong.
   more cases than a ticket deserves. Pick a few at plan time, then freeze the
   list. A list that grows every round is a run that never ends.
 - **A loop with no end.** Every run must have a round count and a budget. If
-  you cannot see the round number, the loop is not engineered.
+  you cannot see the round number, the loop has no real end.

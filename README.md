@@ -20,7 +20,8 @@ What you get:
 
 - **Claude Code**, with plugin support (`claude plugin --help` works).
 - **Python 3** (standard library only; nothing to install).
-- **Herdr**, a terminal multiplexer for coding agents. The CoS starts every
+- **Herdr**, a terminal multiplexer for coding agents (one window that runs
+  many terminals, called panes). The CoS starts every
   other agent in a Herdr pane. Run the CoS inside Herdr, so `HERDR_ENV=1` is
   set. Outside Herdr, the CoS stops and asks you to start it inside Herdr.
 - **git**, for the repos the agents work in.
@@ -69,7 +70,7 @@ The plugin folder is also a local marketplace (`.claude-plugin/marketplace.json`
    /cos:init
    ```
 
-   It asks five things. Each one has a default:
+   It asks five things, in two rounds. Each one has a default:
 
    | Question | Default |
    |---|---|
@@ -82,7 +83,7 @@ The plugin folder is also a local marketplace (`.claude-plugin/marketplace.json`
    You can also pass the answers, and skip the questions:
 
    ```
-   /cos:init name="Ada" language=English address=Sam profiles="work=~/.claude-work,home=~/.claude-home" runtimes=claude,codex
+   /cos:init name="Ada" language=English address=Sam profiles="work=/home/me/.claude-work,home=/home/me/.claude-home" runtimes=claude,codex
    ```
 
 3. It creates these files and never overwrites one that exists:
@@ -108,17 +109,20 @@ The plugin folder is also a local marketplace (`.claude-plugin/marketplace.json`
 
 ```json
 {
+  "cos_workspace": 1,
   "agent_name": "Chief of Staff",
   "language": "English",
-  "principal": "you",
-  "profiles": [{ "name": "default", "config_dir": "~/.claude" }],
+  "address": "you",
+  "profiles": [{ "name": "default", "config_dir": "/home/me/.claude" }],
   "runtimes": ["claude"],
   "correction_words": []
 }
 ```
 
+- `cos_workspace` — marks the folder as a CoS workspace. Keep it.
 - `profiles` — the Claude accounts the CoS may start agents on. Each agent
-  pane gets `CLAUDE_CONFIG_DIR=<config_dir>`. With more than one profile, the
+  pane gets `CLAUDE_CONFIG_DIR=<config_dir>`, so use full paths (init turns
+  `~` into a full path for you). With more than one profile, the
   CoS asks you which one to use. The hooks and the catch-up script read
   transcripts from these folders.
 - `runtimes` — the Herdr agent kinds the CoS may start. Anything else is off.
@@ -126,27 +130,32 @@ The plugin folder is also a local marketplace (`.claude-plugin/marketplace.json`
   English words like "no", "wrong", and "instead" are built in. The hooks use
   them to mark the prompts where you corrected an agent.
 
-`agent_name`, `language`, and `principal` are also written into `identity.md`
+`agent_name`, `language`, and `address` are also written into `identity.md`
 and `CLAUDE.md` at init. To change them later, edit those files too.
 
 ## Hooks
 
-Both hooks first check for `cos.json` in the session's folder. Without it,
-they print nothing and write nothing.
+Both hooks first check that the session's folder is a CoS workspace: it holds
+a `cos.json` written by `/cos:init` (with `"cos_workspace": 1`) and a
+`memory/` folder. If not, they print nothing and write nothing.
 
 - **SessionStart** (`scripts/session-start.py`) adds to the session's context
   the folders with Claude Code sessions in the last 7 days (from every profile
-  in `cos.json`) and the number of records in `memory/inbox.jsonl`.
+  in `cos.json`, leaving out the workspace itself) and the number of records
+  in `memory/inbox.jsonl`. It runs when a session starts, and after `/clear`
+  or a compact.
 - **SessionEnd** (`scripts/session-end.py`) appends one JSON line to
   `memory/inbox.jsonl`: the time, the reason, the profile, the number of human
   prompts, the first prompt, and up to six prompts that look like corrections.
-  The CoS turns these into notes at the next session start, then empties the
-  file.
+  Nothing is written for a session where no human typed a prompt. The CoS
+  turns these lines into notes at the next session start, then clears the
+  inbox.
 
-To run a hook by hand, pipe a payload into it:
+To test a hook by hand, pipe a payload into it. Put your own paths in; the
+transcript must hold at least one prompt. This adds a real line to the inbox:
 
 ```bash
-echo '{"session_id": "abc123", "cwd": "'"$PWD"'", "transcript_path": "/path/to/transcript.jsonl", "reason": "other"}' \
+echo '{"session_id": "abc123", "cwd": "/home/me/cos", "transcript_path": "/path/to/transcript.jsonl", "reason": "other"}' \
   | python3 /path/to/cos-plugin/scripts/session-end.py
 ```
 

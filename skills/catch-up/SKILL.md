@@ -63,7 +63,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/catch-up.py" --list --since <YYYY-MM-DD>
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/catch-up.py" <project-path> --since <YYYY-MM-DD> --max 120
 ```
 
-The script prints only human prompts. It drops tool output, text the CLI
+Each `--list` row ends with a folder path; pass it to the second command as
+it is. The script prints only human prompts. Times are local. It drops tool output, text the CLI
 injected, and the prompts you yourself sent to a delegate (the ones that point
 at `.loop-task.md` or `.lead-task.md`). A slash command is unwrapped, so
 `/fix make the modal close` shows as one line.

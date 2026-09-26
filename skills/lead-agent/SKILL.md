@@ -12,7 +12,7 @@ Read this when you give out a job that is bigger than one prompt.
 
 The `cos:loop` skill has you drive every node yourself: you open the planner
 pane, then the maker pane, then the verifier pane. That works, but it keeps you
-busy for the whole run, and the principal wants your desk free.
+busy for the whole run, and the principal wants you free to talk.
 
 So there is a second shape. You hand the whole job to **one** agent, called the
 **lead**. The lead does the work and starts its own helpers. You go back to the
@@ -81,6 +81,7 @@ Acceptance (frozen — do not add to this list):
 - Two rounds of fixing at most. Then stop and report the failure.
 - Stop at a committed branch. Do not push, do not open a PR, do not merge,
   do not touch main, never commit a secret.
+- Never commit `.lead-task.md` or `.lead-report.md`.
 - At most <N> helper agents alive at once. Close every pane you open.
 - If you stop to ask a question, write it in `.lead-report.md` with the exact
   question, the answer you got, who answered, and the time. "The user
@@ -111,7 +112,7 @@ Pick the profile from `cos.json` first (the `cos:model-routing` skill).
 
 ```bash
 # 1. brief (you write .lead-task.md into the repo)
-# 2. pane + agent, with the profile on the pane
+# 2. pane + agent, with the profile's full path on the pane
 herdr pane split --current --direction right --cwd <repo> --no-focus \
   --env CLAUDE_CONFIG_DIR=<profile config_dir>
 herdr agent start lead --kind claude --pane <pane-id> -- --effort xhigh
@@ -167,7 +168,8 @@ the principal really made the call.
   verifier because it is sure. Check the report for a second agent name and a
   red proof. No second name, no PASS.
 - **A lead that keeps hiring.** Read `herdr agent list` when it reports. More
-  agents alive than the cap means the next brief needs the cap said louder.
+  agents alive than the cap means the next brief must state the cap more
+  clearly.
 - **A silent lead.** The background wait returns and the report file is not
   there. Read the pane, then ask the lead for the file. Do not re-run the job.
 - **A lead that pushed.** The rules say stop at a branch. If it pushed anyway,

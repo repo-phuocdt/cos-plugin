@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """SessionEnd hook for a Chief of Staff workspace.
 
-It appends one JSON line to memory/inbox.jsonl in the workspace. The line
-records signal, not judgement:
+It appends one JSON line to memory/inbox.jsonl in the workspace. It does not
+judge the session; it only records signal:
   - when the session ended, why, and which Claude profile ran it;
   - how many prompts a human typed, and the first one (what it was for);
   - the prompts that read like a correction (where a lesson hides).
@@ -14,8 +14,9 @@ Input: the SessionEnd payload as JSON on stdin, for example
   {"session_id": "abc123", "cwd": "/path/to/workspace",
    "transcript_path": "/path/to/transcript.jsonl", "reason": "other"}
 
-Outside a CoS workspace (no cos.json in "cwd") it writes nothing. It always
-exits 0: a broken hook must never block a session.
+It writes nothing outside a CoS workspace, and nothing for a session where no
+human typed a prompt. It always exits 0: a broken hook must never block a
+session.
 """
 
 import datetime as dt
@@ -35,33 +36,32 @@ MAX_CHARS = 200
 
 def main():
     payload = cos_lib.read_payload()
-    root = cos_lib.find_workspace(payload.get("cwd") or os.getcwd())
+    root = cos_lib.workspace_from_hook(payload)
     if not root:
         return
-    config = cos_lib.load_config(root)
-
-    prompts = []
     path = payload.get("transcript_path")
-    if isinstance(path, str) and os.path.isfile(path):
-        prompts = list(cos_lib.human_prompts(path))
+    if not isinstance(path, str) or not os.path.isfile(path):
+        return
+    prompts = list(cos_lib.human_prompts(path))
+    if not prompts:
+        return  # nobody typed anything, so there is nothing to learn
+
+    config = cos_lib.load_config(root)
     regex = cos_lib.correction_re(config)
     corrections = [
         text[:MAX_CHARS] for _, text, first in prompts
         if not first and cos_lib.is_correction(regex, text)
     ]
-
     record = {
         "at": dt.datetime.now().isoformat(timespec="minutes"),
         "session": str(payload.get("session_id") or "")[:8],
         "reason": str(payload.get("reason") or ""),
-        "profile": cos_lib.profile_name(config, cos_lib.current_config_dir()),
+        "profile": cos_lib.profile_name(config, cos_lib.current_config_dir(), root),
         "prompts": len(prompts),
-        "first": prompts[0][1][:MAX_CHARS] if prompts else "",
+        "first": prompts[0][1][:MAX_CHARS],
         "corrections": corrections[:MAX_CORRECTIONS],
     }
-    inbox = os.path.join(root, cos_lib.INBOX)
-    os.makedirs(os.path.dirname(inbox), exist_ok=True)
-    with open(inbox, "a", encoding="utf-8") as f:
+    with open(os.path.join(root, cos_lib.INBOX), "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 

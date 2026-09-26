@@ -66,7 +66,8 @@ or a test suite nobody wanted. If you see real work outside the ask, put it in
 Stop and bring it back to the principal when:
 
 - You cannot write the acceptance line. That is gate 1 in the `cos:loop`
-  skill. An unclear ask is not a model problem.
+  skill. An unclear ask is not a model problem. (A plan-only run is the one
+  exception; see gate 1.)
 - The ask is unclear **and** being wrong is expensive. See the last row of the
   lane table in the `cos:model-routing` skill.
 - The ask needs a decision only the principal can make, and the notes do not

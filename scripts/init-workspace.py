@@ -2,18 +2,22 @@
 """Create a Chief of Staff workspace in a folder. The /cos:init skill runs it.
 
 It never overwrites a file. A file that already exists is kept as it is, so
-running it twice is safe.
+running it again only adds the files that are missing. cos.json is written
+last: it marks the folder as a workspace, so a run that fails halfway leaves
+no marker behind.
 
 Example:
-  python3 init-workspace.py --dir ~/cos --name "Chief of Staff" \\
+  python3 init-workspace.py --dir ~/cos --name 'Chief of Staff' \\
       --language English --address you \\
-      --profile work=~/.claude-work --runtime claude --runtime codex
+      --profile work=/home/me/.claude-work --runtime claude --runtime codex
 """
 
 import argparse
 import json
 import os
+import re
 import sys
+import tempfile
 
 # Write no __pycache__ into the plugin folder; the plugin root can be read-only
 # and it changes on every update.
@@ -29,12 +33,14 @@ FILES = [
     ("identity.md.tmpl", "identity.md"),
     ("index.md.tmpl", os.path.join("memory", "index.md")),
     ("project.md.tmpl", os.path.join("memory", "projects", "_template.md")),
-    ("lessons.md.tmpl", os.path.join("memory", "lessons.md")),
 ]
+# Files that start empty.
+EMPTY = [os.path.join("memory", "lessons.md"), cos_lib.INBOX]
 SETTINGS = os.path.join(".claude", "settings.json")
 # Built-in sub-agents are off in a workspace: the Chief of Staff starts other
 # agents only through Herdr (see the cos:delegation skill).
 DENY = ["Task", "Agent"]
+PLACEHOLDER = re.compile(r"\{\{(agent_name|language|address)\}\}")
 
 DEFAULTS = {
     "name": "Chief of Staff",
@@ -45,43 +51,46 @@ DEFAULTS = {
 
 
 def one_line(value):
-    """Answers go into Markdown and JSON. Keep each one on a single line."""
-    return " ".join(str(value).split())
+    """Answers go into Markdown and JSON. Keep each one on a single line, and
+    drop a leading "@" so CLAUDE.md never reads it as a file import."""
+    return " ".join(str(value).split()).lstrip("@").strip()
 
 
 def parse_profile(text):
-    if "=" not in text:
-        raise argparse.ArgumentTypeError("use NAME=CONFIG_DIR, for example work=~/.claude-work")
-    name, path = text.split("=", 1)
+    name, sep, path = text.partition("=")
     name, path = one_line(name), path.strip()
-    if not name or not path:
-        raise argparse.ArgumentTypeError("use NAME=CONFIG_DIR, for example work=~/.claude-work")
-    return {"name": name, "config_dir": path}
+    if not sep or not name or not path:
+        raise argparse.ArgumentTypeError("use NAME=CONFIG_DIR, for example work=/home/me/.claude-work")
+    return name, path
 
 
 def render(template, values):
     with open(os.path.join(TEMPLATES, template), encoding="utf-8") as f:
         text = f.read()
-    for key, value in values.items():
-        text = text.replace("{{" + key + "}}", value)
-    return text
+    # One pass, so an answer that holds "{{...}}" is never replaced again.
+    return PLACEHOLDER.sub(lambda m: values[m.group(1)], text)
 
 
 def write_new(root, rel, text, report):
+    """Write a new file. Keep any file, folder, or symlink that is already there."""
     path = os.path.join(root, rel)
-    if os.path.exists(path):
+    if os.path.lexists(path):
         report.append(("kept", rel))
         return
-    os.makedirs(os.path.dirname(path) or root, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with open(path, "x", encoding="utf-8") as f:
+            f.write(text)
+    except FileExistsError:
+        report.append(("kept", rel))
+        return
     report.append(("created", rel))
 
 
 def merge_settings(root, report):
     """Create .claude/settings.json, or add the deny rules to the one that exists."""
     path = os.path.join(root, SETTINGS)
-    if not os.path.exists(path):
+    if not os.path.lexists(path):
         text = json.dumps({"permissions": {"deny": DENY}}, indent=2) + "\n"
         write_new(root, SETTINGS, text, report)
         return
@@ -99,9 +108,13 @@ def merge_settings(root, report):
         report.append(("kept", SETTINGS))
         return
     deny.extend(missing)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    # Write a temp file, then swap it in, so a crash never leaves half a file.
+    target = os.path.realpath(path)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), suffix=".tmp")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
         f.write("\n")
+    os.replace(tmp, target)
     report.append(("updated (deny " + ", ".join(missing) + ")", SETTINGS))
 
 
@@ -117,31 +130,45 @@ def main():
                     help="a Herdr agent kind the agent may start (repeat for more)")
     a = ap.parse_args()
 
+    root = os.path.abspath(os.path.expanduser(a.dir))
     values = {
         "agent_name": one_line(a.name) or DEFAULTS["name"],
         "language": one_line(a.language) or DEFAULTS["language"],
-        "principal": one_line(a.address) or DEFAULTS["address"],
+        "address": one_line(a.address) or DEFAULTS["address"],
     }
-    profile_list = a.profile or [{"name": "default", "config_dir": cos_lib.current_config_dir()}]
+    # Store full paths: a pane gets CLAUDE_CONFIG_DIR=<config_dir>, and a shell
+    # does not always expand "~" there.
+    profile_list = [{"name": name, "config_dir": cos_lib.expand(path, root)}
+                    for name, path in a.profile]
+    if not profile_list:
+        profile_list = [{"name": "default", "config_dir": cos_lib.current_config_dir()}]
     runtimes = [one_line(r) for r in a.runtime if one_line(r)] or DEFAULTS["runtime"]
-
-    root = os.path.abspath(os.path.expanduser(a.dir))
-    os.makedirs(root, exist_ok=True)
-    report = []
-
     config = {
+        cos_lib.MARKER_KEY: 1,
         "agent_name": values["agent_name"],
         "language": values["language"],
-        "principal": values["principal"],
+        "address": values["address"],
         "profiles": profile_list,
         "runtimes": runtimes,
         "correction_words": [],
     }
-    write_new(root, cos_lib.CONFIG_NAME, json.dumps(config, indent=2, ensure_ascii=False) + "\n", report)
-    for template, rel in FILES:
-        write_new(root, rel, render(template, values), report)
-    write_new(root, cos_lib.INBOX, "", report)
-    merge_settings(root, report)
+
+    report = []
+    try:
+        os.makedirs(root, exist_ok=True)
+        for template, rel in FILES:
+            write_new(root, rel, render(template, values), report)
+        for rel in EMPTY:
+            write_new(root, rel, "", report)
+        merge_settings(root, report)
+        write_new(root, cos_lib.CONFIG_NAME,
+                  json.dumps(config, indent=2, ensure_ascii=False) + "\n", report)
+    except OSError as e:
+        for state, rel in report:
+            print("  {:<8} {}".format(state, rel))
+        print("error: {}. Fix it and run init again; it keeps what exists.".format(e),
+              file=sys.stderr)
+        return 1
 
     print("Chief of Staff workspace: " + root)
     for state, rel in report:
