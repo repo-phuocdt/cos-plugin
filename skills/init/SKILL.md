@@ -28,7 +28,7 @@ Run `ls -A` in the current folder.
   files) → a workspace should be its own folder. Ask the user to confirm
   before you go on.
 - Empty, or only `.claude/`, or only files an earlier init left
-  (`CLAUDE.md`, `identity.md`, `memory/`) → go on.
+  (`CLAUDE.md`, `identity.md`, `memory/`, `.gitignore`) → go on.
 
 ## 2. Collect the answers
 
@@ -58,13 +58,15 @@ Run the plugin's script once. Pass one `--profile` per profile and one
 in single quotes; write a single quote inside a value as `'\''`.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/init-workspace.py" --dir "$PWD" \
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/init-workspace.py" --dir "${CLAUDE_PROJECT_DIR}" \
   --name '<name>' --language '<language>' --address '<address>' \
   --profile '<name>=<config dir>' --runtime '<kind>'
 ```
 
-The script never overwrites a file. It prints each file as `created`, `kept`,
-or `updated`. Show that list to the user as it is. If it prints `error:`, show
+The script never overwrites a file. It only adds lines: the deny rules to an
+existing `.claude/settings.json`, and the inbox lines to an existing
+`.gitignore`. It prints each file as `created`, `kept`, `updated`, or
+`SKIPPED`. Show that list to the user as it is. If it prints `error:`, show
 the error, help the user fix it, and run the same command again.
 
 ## 4. Hand over

@@ -157,8 +157,8 @@ Rules:
 
 ### Step 4 — expect to guess wrong
 
-The first guess does not need to be right. It needs to be cheap and to fail
-loudly. Start at the cheapest sane lane. When the first verify round fails and
+The first guess does not need to be right. It needs to be cheap, and when it
+fails you must see it fail. Start at the cheapest sane lane. When the first verify round fails and
 the cause looks like the model was too weak for the job, spend the **second**
 retry on a stronger model instead of the same one.
 
@@ -181,7 +181,7 @@ the same task file. Never change model mid-run.
 You are the reasoning layer. Other agents are the execution layer. If you are
 about to do a large mechanical task yourself — read 20 files, run a big
 refactor, work through a whole test suite — stop and delegate it. Your context is the
-scarce thing; keep it for the decisions.
+limited thing; keep it for the decisions.
 
 ## Per-project override
 

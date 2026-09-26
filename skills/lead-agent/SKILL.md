@@ -75,13 +75,16 @@ Acceptance (frozen — do not add to this list):
 - Plan before you edit. Say which files you will change and why.
 - The agent that writes the code never grades it. Start a second agent to
   verify.
-- The verifier shows raw command output. It also breaks the behaviour on
+- The verifier shows raw command output. It also breaks the behavior on
   purpose and shows the same command going red. No red proof, no PASS.
 - Review the diff with a code review skill before you call it done.
 - Two rounds of fixing at most. Then stop and report the failure.
 - Stop at a committed branch. Do not push, do not open a PR, do not merge,
   do not touch main, never commit a secret.
-- Never commit `.lead-task.md` or `.lead-report.md`.
+- Start each helper with a task file named `.<helper>-task.md` and the
+  one-line prompt `Read the file .<helper>-task.md in this directory and do
+  exactly what it says.` Never commit any `.*-task.md` file or
+  `.lead-report.md`.
 - At most <N> helper agents alive at once. Close every pane you open.
 - If you stop to ask a question, write it in `.lead-report.md` with the exact
   question, the answer you got, who answered, and the time. "The user
@@ -100,7 +103,7 @@ Report: end with Status: DONE | BLOCKED | NEEDS_CONTEXT + 2 lines summary
 ```
 
 `<N>` is 2 unless the job clearly splits into parts that touch different files.
-A lead with no cap starts an agent per idea and drains the account's session
+A lead with no cap starts an agent per idea and uses up the account's session
 limit.
 
 The report goes to a file, not to the pane, because a long answer scrolls off
@@ -136,7 +139,8 @@ When the wait wakes you:
    proof, is a `FAIL` however green the summary looks.
 4. `blocked` -> read the question. Answer it from the notes as the principal,
    or bring a real decision to the principal.
-5. `PASS` -> open the PR yourself, update the project file, delete
+5. `PASS` -> ask the principal about the push (loop gate 5), open the PR
+   yourself after a yes, update the project file, delete
    `.lead-task.md` and `.lead-report.md`, close the pane.
 6. `FAIL` after its 2 rounds -> close the pane and bring the findings to the
    principal. Do not start a fresh lead on the same frame without changing
@@ -167,7 +171,8 @@ the principal really made the call.
 - **A lead that grades itself.** It runs the tests, sees green, and skips the
   verifier because it is sure. Check the report for a second agent name and a
   red proof. No second name, no PASS.
-- **A lead that keeps hiring.** Read `herdr agent list` when it reports. More
+- **A lead that starts too many helpers.** Read `herdr agent list` when it
+  reports. More
   agents alive than the cap means the next brief must state the cap more
   clearly.
 - **A silent lead.** The background wait returns and the report file is not

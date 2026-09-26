@@ -2,10 +2,10 @@
 
 A CoS workspace is a folder with a `cos.json` and a `memory/` folder. The
 cos.json that `/cos:init` writes has the key "cos_workspace". A cos.json that
-cannot be read (for example after a typo) still marks a workspace when
-memory/ is there, so a typo never turns the hooks off in silence. A readable
-cos.json without the key belongs to some other tool. Every hook checks this
-first and does nothing outside a workspace.
+cannot be read, or is not a JSON object (for example after a typo), still
+marks a workspace when memory/ is there, so a typo never turns the hooks off
+in silence. A JSON object without the key belongs to some other tool. Every
+hook checks this first and does nothing outside a workspace.
 
 Only the Python standard library is used, so the plugin needs no install step.
 """
@@ -31,7 +31,7 @@ INBOX_SEEN = os.path.join("memory", ".inbox-seen.json")
 
 # Claude Code stores the transcripts of a folder under
 # <config dir>/projects/<name>/. It makes <name> from the folder's real path
-# (symlinks resolved): every UTF-16 code unit that is not an ASCII letter or
+# (symlinks resolved, then Unicode NFC form): every UTF-16 code unit that is not an ASCII letter or
 # digit becomes "-", so an emoji becomes "--". A name longer than 200
 # characters is cut at 200, and "-" plus a hash of the path is added. A
 # worktree lives in <repo>/.claude/worktrees/<name>/. Checked on Claude Code
@@ -39,9 +39,9 @@ INBOX_SEEN = os.path.join("memory", ".inbox-seen.json")
 MAX_ENCODED = 200
 WORKTREE_DIR = os.path.join(".claude", "worktrees")
 
-# A correction is a prompt that turns the agent around. Only the opening of a
-# prompt counts: "do not touch X" late in a task is an instruction, but "no, do
-# it the other way" at the front is a correction. Add words for your own chat
+# A correction is a prompt that tells the agent it went the wrong way. Only a
+# word at the very start of a prompt counts: "Fix the stop button" is a task,
+# but "Stop, do it the other way" is a correction. Add words for your own chat
 # language in cos.json under "correction_words".
 CORRECTION_HEAD = 60
 CORRECTION_WORDS = [
@@ -50,9 +50,13 @@ CORRECTION_WORDS = [
     "redo",
 ]
 
-# The one-line prompt the Chief of Staff sends to a delegate. The task itself
-# is already written down in memory/projects/, so this prompt is noise here.
-COS_PROMPT = re.compile(r"^Read (the file )?\.(loop|lead)-task\.md\b", re.IGNORECASE)
+# The one-line prompt that starts a delegate: the Chief of Staff, or a lead
+# agent, points it at a task file such as .loop-task.md or .lead-task.md. The
+# work is already written down in memory/projects/. So a session that starts
+# with this prompt is a delegate session, and every prompt in it is left out:
+# later prompts there come from the Chief of Staff or a lead, not from the
+# principal.
+COS_PROMPT = re.compile(r"^Read (the file )?\.[A-Za-z0-9_-]+-task\.md\b", re.IGNORECASE)
 
 # Text the CLI puts into a user turn. No human typed any of it.
 MACHINE_PREFIX = (
@@ -61,6 +65,10 @@ MACHINE_PREFIX = (
     "Base directory for this skill:", "(Re-invocation of",
     "<bash-input>", "<bash-stdout>", "<bash-stderr>",
 )
+# A whole turn wrapped in one tag pair, like the CLI's own notices, is machine
+# text too, even for a tag this list does not name yet.
+MACHINE_TAG = re.compile(r"^<([a-z][\w-]*)(\s[^>]*)?>[\s\S]*</\1>\s*$")
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 # A slash command arrives wrapped in tags. The human words are in <command-args>.
 SLASH_PREFIX = ("<command-name>", "<command-message>")
@@ -103,6 +111,27 @@ def read_config(root):
 
 def load_config(root):
     return read_config(root)[0]
+
+
+def config_problems(config):
+    """Short notes on cos.json values the scripts have to ignore."""
+    notes = []
+    items = config.get("profiles")
+    if items is not None and not isinstance(items, list):
+        notes.append('"profiles" is not a list, so it is ignored')
+    elif isinstance(items, list):
+        for i, p in enumerate(items):
+            if not isinstance(p, dict) or not isinstance(p.get("config_dir"), str) \
+                    or not p["config_dir"].strip():
+                notes.append('profile {} has no "config_dir", so it is ignored'.format(i + 1))
+            elif str(p.get("name")) == "unknown":
+                notes.append('profile {} is named "unknown", which the hooks use for '
+                             'unlisted accounts'.format(i + 1))
+    words = config.get("correction_words")
+    if words is not None and not (isinstance(words, list)
+                                  and all(isinstance(w, str) for w in words)):
+        notes.append('"correction_words" is not a list of words, so it is ignored')
+    return notes
 
 
 def find_workspace(path):
@@ -193,16 +222,16 @@ def correction_re(config):
     parts = []
     for word in words:
         word = normalize(word)
-        if any(unicodedata.east_asian_width(c) in "WF" for c in word):
+        if any(unicodedata.east_asian_width(c) in "WF" for c in word) and len(word) > 1:
             # Chinese, Japanese, and similar scripts use no spaces between
-            # words, so a word boundary check would never match. Match the
-            # word only at the start of the prompt instead. A one-character
-            # word must also stand alone, so "不" does not flag "不错".
-            tail = r"(?!\w)" if len(word) == 1 else ""
-            parts.append(r"^[\W_]*" + re.escape(word) + tail)
+            # words, so a longer word may run straight into the next one.
+            parts.append(re.escape(word))
         else:
-            parts.append(r"(?<!\w)" + re.escape(word) + r"(?!\w)")
-    return re.compile("|".join(parts), re.IGNORECASE)
+            # Anything else must end at a word edge. For a one-character
+            # Chinese word this means it stands alone, so "不" does not
+            # flag "不错".
+            parts.append(re.escape(word) + r"(?!\w)")
+    return re.compile(r"^[\W_]*(?:" + "|".join(parts) + ")", re.IGNORECASE)
 
 
 def is_correction(regex, text):
@@ -240,9 +269,14 @@ def slug(path):
         chr(u) if u < 128 and chr(u).isalnum() else "-" for u in utf16_units(path))
 
 
+def real_path(path):
+    """The path as Claude Code records it: symlinks resolved, NFC form."""
+    return normalize(os.path.realpath(expand(path)))
+
+
 def encode(path):
     """The transcript dir name Claude Code uses for a folder."""
-    real = os.path.realpath(expand(path))
+    real = real_path(path)
     name = slug(real)
     if len(name) <= MAX_ENCODED:
         return name
@@ -253,19 +287,32 @@ def project_of(dir_path, name, project):
     """Tell if transcript dir `name` belongs to the folder `project`.
 
     Return "main", "worktree <name>", or None. The main dir is matched on its
-    exact name. A worktree dir is first matched on its name, then confirmed
+    exact name. Any other dir is first matched on its name, then confirmed
     from the cwd its sessions recorded, because a long name is cut and could
-    fit another folder too.
+    fit another folder too. Only worktrees under <repo>/.claude/worktrees/
+    are found.
     """
-    real = os.path.realpath(expand(project))
+    real = real_path(project)
     if name == encode(real):
         return "main"
     trees = os.path.join(real, WORKTREE_DIR) + os.sep
-    if not name.startswith(slug(trees)[:MAX_ENCODED]):
+    long_main = len(slug(real)) > MAX_ENCODED and name.startswith(slug(real)[:MAX_ENCODED] + "-")
+    if not long_main and not name.startswith(slug(trees)[:MAX_ENCODED]):
         return None
-    cwd = dir_cwd(dir_path)
-    if cwd and os.path.realpath(cwd).startswith(trees):
-        return "worktree " + os.path.realpath(cwd)[len(trees):].split(os.sep)[0]
+    return cwd_tag(dir_cwd(dir_path), real)
+
+
+def cwd_tag(cwd, real):
+    """Tag a session cwd against a project's real path: "main",
+    "worktree <name>", or None when it belongs somewhere else."""
+    if not cwd:
+        return None
+    cwd = real_path(cwd)
+    if cwd == real:
+        return "main"
+    trees = os.path.join(real, WORKTREE_DIR) + os.sep
+    if cwd.startswith(trees):
+        return "worktree " + cwd[len(trees):].split(os.sep)[0]
     return None
 
 
@@ -278,7 +325,7 @@ def unwrap(text):
         name = name.group(1).strip() if name else "?"
         # A slash call with no arguments carries no intent worth reading.
         return "/{} {}".format(name, args) if args else None
-    if text.startswith(MACHINE_PREFIX):
+    if text.startswith(MACHINE_PREFIX) or MACHINE_TAG.match(text):
         return None
     return text
 
@@ -302,7 +349,8 @@ def human_prompts(jsonl_path, since=None):
 
     since is a local date, YYYY-MM-DD. The first human prompt of the session
     is marked even when since hides it. key names the prompt: its uuid in the
-    transcript, or a hash of its time and text.
+    transcript, or a hash of its time and text. A delegate session (its first
+    prompt points at a task file) yields nothing.
     """
     first = True
     with open(jsonl_path, encoding="utf-8", errors="replace") as f:
@@ -327,7 +375,11 @@ def human_prompts(jsonl_path, since=None):
             if not isinstance(content, str):
                 continue
             text = unwrap(content.strip())
-            if not text or COS_PROMPT.search(text):
+            if not text:
+                continue
+            if COS_PROMPT.search(text):
+                if first:
+                    return  # a delegate session: none of it is the principal's
                 continue
             is_first, first = first, False
             raw_ts = rec.get("timestamp") if isinstance(rec.get("timestamp"), str) else ""
@@ -354,23 +406,53 @@ def safe_listdir(path):
 
 
 def session_cwd(jsonl_path):
-    """The folder a session ran in, read from its first records."""
+    """The folder a session ran in, read from its first 64 KB."""
     try:
         with open(jsonl_path, encoding="utf-8", errors="replace") as f:
-            for i, line in enumerate(f):
-                if i >= 50:
-                    break
-                if '"cwd"' not in line:
+            head = f.read(65536)
+    except OSError:
+        return None
+    for line in head.splitlines():
+        if '"cwd"' not in line:
+            continue
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(rec, dict) and isinstance(rec.get("cwd"), str) and rec["cwd"]:
+            return rec["cwd"]
+    return None
+
+
+def is_delegate_session(jsonl_path):
+    """True when the session's first human prompt points at a task file."""
+    try:
+        with open(jsonl_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if '"user"' not in line:
                     continue
                 try:
                     rec = json.loads(line)
                 except ValueError:
                     continue
-                if isinstance(rec, dict) and isinstance(rec.get("cwd"), str):
-                    return rec["cwd"]
+                if not isinstance(rec, dict) or rec.get("type") != "user":
+                    continue
+                if rec.get("isSidechain") or rec.get("isMeta") or rec.get("isCompactSummary"):
+                    continue
+                message = rec.get("message")
+                content = message.get("content") if isinstance(message, dict) else None
+                if isinstance(content, list):
+                    content = "".join(
+                        p.get("text", "") for p in content
+                        if isinstance(p, dict) and p.get("type") == "text")
+                if not isinstance(content, str):
+                    continue
+                text = unwrap(content.strip())
+                if text:
+                    return bool(COS_PROMPT.search(text))
     except OSError:
         pass
-    return None
+    return False
 
 
 def dir_cwd(dir_path):
@@ -388,7 +470,9 @@ def dir_cwd(dir_path):
 
 
 def shell_path(path):
-    """A path ready to paste into a shell command, with "~" for home."""
+    """A path ready to paste into a shell command, with "~" for home.
+    Control characters become "?", so a row always stays on one line."""
+    path = CONTROL.sub("?", path)
     home = os.path.expanduser("~")
     if path == home:
         return "~"
@@ -411,7 +495,8 @@ def list_rows(profile_list, since=None, skip=()):
 
     Each row ends with the folder the newest session ran in, quoted for the
     shell, so it can be passed to catch-up.py as it is. skip holds folders to
-    leave out.
+    leave out. Delegate sessions are not counted: the Chief of Staff started
+    them, so it has seen that work.
     """
     floor = since_floor(since)
     skip_names = {encode(path) for path in skip}
@@ -424,13 +509,14 @@ def list_rows(profile_list, since=None, skip=()):
             files = []
             for path in glob.glob(os.path.join(root, name, "*.jsonl")):
                 mtime = safe_mtime(path)
-                if mtime is not None and (floor is None or mtime >= floor):
+                if mtime is not None and (floor is None or mtime >= floor) \
+                        and not is_delegate_session(path):
                     files.append((mtime, path))
             if not files:
                 continue
             last, newest = max(files)
             where = session_cwd(newest)
-            where = shell_path(where) if where else name
+            where = shell_path(where) if where else name + " (cwd unknown)"
             rows.append((last, profile, where, len(files)))
     return [
         "{:%Y-%m-%d %H:%M}  {:<10} {:>3} sessions  {}".format(

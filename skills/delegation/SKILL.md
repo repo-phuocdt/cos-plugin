@@ -125,8 +125,8 @@ agent's job, not yours (hard rule 1 in `CLAUDE.md`).
 
 Your session is where the principal talks to you. A `--wait` call blocks it
 for as long as the agent runs, so the principal cannot give you the next job.
-That is a bad trade: the agent has its own pane and its own context, and it
-keeps working whether you watch it or not.
+That costs more than it gives: the agent has its own pane and its own
+context, and it keeps working whether you watch it or not.
 
 Rules:
 
@@ -154,7 +154,7 @@ Run it with the harness's background-run option, not with `&`. The command
 sits outside your turn, and the harness calls you back when it exits. Then you
 read the agent and run the next node.
 
-Four rules keep this honest:
+Four rules for the wait:
 
 - One background wait per agent. Two waits on the same name is noise.
 - Always give it a `--timeout`. A wait with no end becomes a process nobody
@@ -223,13 +223,15 @@ Write the block above to a file inside the agent's working directory, then send
 one short line. The task file is a hand-off file (see `identity.md`). Before
 you write it, add the hand-off file names to the repo's git exclude file, so
 no agent's `git add -A` can commit them. This works in a normal repo and in a
-linked worktree, creates the folder when it is missing, and adds a name only
-once:
+linked worktree, creates the folder when it is missing, keeps the last line of
+the file whole, and adds a name only once. `.*-task.md` covers every task
+file, including the ones a lead writes for its helpers:
 
 ```bash
 (cd <repo> && f=$(git rev-parse --git-path info/exclude) &&
  mkdir -p "$(dirname "$f")" &&
- for n in .loop-task.md .lead-task.md .lead-report.md; do
+ if [ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ]; then echo >> "$f"; fi &&
+ for n in '.*-task.md' .lead-report.md; do
    grep -qxF "$n" "$f" 2>/dev/null || printf '%s\n' "$n" >> "$f"
  done)
 ```

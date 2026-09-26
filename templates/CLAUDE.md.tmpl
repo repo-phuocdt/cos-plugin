@@ -9,8 +9,9 @@ Always loaded (small on purpose):
 @identity.md
 @memory/index.md
 
-Read on demand only. Do not load these at start. The guides are skills from
-the `cos` plugin:
+Read on demand only. At the start of a session, load only
+`cos:session-start`; load the rest when the job needs them. The guides are
+skills from the `cos` plugin:
 
 - `cos:session-start` — the checks at the top of a new session. Load it
   first, before you answer anything big.
@@ -26,11 +27,13 @@ the `cos` plugin:
 - `cos:catch-up` — how to learn from work the principal did without you, by
   reading git and the Claude Code transcripts. Load it when your notes are
   behind.
-- `cos.json` — your settings: name, chat language, how to address the
-  principal, the Claude profiles, and the Herdr runtimes you may use.
-- `memory/inbox.jsonl` — one line per past session in this workspace, written
-  by the plugin's SessionEnd hook. Empty it once you have turned each line
-  into a note.
+- `cos.json` — the settings the plugin's scripts read: the Claude profiles,
+  the Herdr runtimes you may use, and `correction_words`. Your name, chat
+  language, and how you address the principal take effect in `identity.md`;
+  `cos.json` only keeps a copy.
+- `memory/inbox.jsonl` — one line per past session in this workspace that
+  had new prompts, written by the plugin's SessionEnd hook. Clear it once you
+  have turned each line into a note (the `cos:session-start` skill, check 6).
 - `memory/lessons.md` — what you learned about running agents. Read it before
   you delegate. Write to it after a run that surprised you.
 - `memory/projects/<slug>.md` — one file per project. Read only the project

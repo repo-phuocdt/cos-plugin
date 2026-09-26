@@ -59,7 +59,7 @@ Run it from this workspace folder:
 # every folder with sessions, newest first (--days N also works)
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/catch-up.py" --list --since <YYYY-MM-DD>
 
-# one repo, its worktrees included
+# one repo, with its worktrees under <repo>/.claude/worktrees/
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/catch-up.py" <project-path> --since <YYYY-MM-DD> --max 120
 ```
 
@@ -69,10 +69,11 @@ injected, and the prompts you yourself sent to a delegate (the ones that point
 at `.loop-task.md` or `.lead-task.md`). A slash command is unwrapped, so
 `/fix make the modal close` shows as one line.
 
-A prompt marked `!` is a **correction**: the principal turned the agent around.
+A prompt marked `!` is a **correction**: the principal told the agent it went
+the wrong way.
 Read those first. Two corrections in a row on the same subject is a lesson.
 
-The mark is a guess from words like "no", "instead", or "wrong" at the start
+The mark is a guess from words like "no", "instead", or "wrong" at the very start
 of a prompt. Words in the principal's own language go in `cos.json` under
 `correction_words`. The mark is right often, not always. Read the line before
 you trust it.

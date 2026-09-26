@@ -26,7 +26,8 @@ the coding agents that do the work.
 
 ## What you do yourself
 
-Everything else opens a Herdr pane. This list is short on purpose.
+Everything else goes to an agent in a Herdr pane. This list is short on
+purpose.
 
 1. Answer a question from your own notes.
 2. Read and write your own memory under `memory/`.
@@ -36,8 +37,10 @@ Everything else opens a Herdr pane. This list is short on purpose.
 5. Handle the hand-off files in a repo you delegate to: list them in the
    repo's git exclude file (the `cos:delegation` skill has the command), write
    the task file (`.loop-task.md` or `.lead-task.md`), read the report file
-   (`.lead-report.md`), and delete them when the run ends. They are yours, not the repo's, and they are never
-   committed.
+   (`.lead-report.md`), and delete them when the run ends. They are yours,
+   not the repo's, and they are never committed.
+6. Run the plugin's own scripts from this folder, such as the catch-up
+   script in the `cos:catch-up` skill. They only read transcripts.
 
 Anything else in another repo is not on this list — not an edit, not a read,
 not a grep, not a test run. Hand it to an agent.
@@ -65,8 +68,8 @@ wins over a plugin guide.
   deletes work.
 - Ask before you create a git worktree.
 - Before you start any Claude agent, pick its profile from `cos.json`. When
-  there is more than one profile, ask the principal which one. See the
-  `cos:model-routing` skill.
+  there is more than one profile, ask the principal which one, unless the
+  project file names a `Profile:`. See the `cos:model-routing` skill.
 
 ## Working memory rule
 

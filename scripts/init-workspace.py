@@ -42,10 +42,11 @@ GITIGNORE = ".gitignore"
 # The inbox files hold prompt text, so git must not pick them up by mistake.
 IGNORE_LINES = [cos_lib.INBOX, cos_lib.INBOX_READING, cos_lib.INBOX_SEEN]
 IGNORE_HEAD = "# Chief of Staff: these files hold prompt text. Keep them out of git."
-UNSET_VAR = re.compile(r"\$(\w+|\{\w+\})")
+HOME_VAR = re.compile(r"\$HOME\b|\$\{HOME\}")
 # Built-in sub-agents are off in a workspace: the Chief of Staff starts other
 # agents only through Herdr (see the cos:delegation skill).
 DENY = ["Task", "Agent"]
+SKIPPED = "SKIPPED"
 PLACEHOLDER = re.compile(r"\{\{(agent_name|language|address)\}\}")
 
 DEFAULTS = {
@@ -66,14 +67,16 @@ def one_line(value):
 
 def parse_profile(text):
     name, sep, path = text.partition("=")
-    name, path = one_line(name), os.path.expandvars(path.strip())
+    name = one_line(name)
+    # Only "~" and $HOME are expanded. Any other "$" is refused, so a variable
+    # that is not set, or is set to something else, never lands in cos.json.
+    path = HOME_VAR.sub(lambda m: os.path.expanduser("~"), path.strip())
     if not sep or not name or not path:
         raise argparse.ArgumentTypeError("use NAME=CONFIG_DIR, for example work=/home/me/.claude-work")
-    unset = UNSET_VAR.search(path)
-    if unset:
+    if "$" in path:
         raise argparse.ArgumentTypeError(
-            "{} is not set, so the profile path {} is wrong. Set it, or use a full path."
-            .format(unset.group(0), path))
+            "the profile path {} holds a \"$\". Only ~ and $HOME are expanded; "
+            "write the full path.".format(path))
     return name, path
 
 
@@ -107,6 +110,9 @@ def merge_settings(root, report):
         text = json.dumps({"permissions": {"deny": DENY}}, indent=2) + "\n"
         write_new(root, SETTINGS, text, report)
         return
+    if os.path.islink(path) or os.path.islink(os.path.dirname(path)):
+        report.append((SKIPPED + " (it is a symlink; add the deny rules by hand)", SETTINGS))
+        return
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -114,7 +120,7 @@ def merge_settings(root, report):
         if not isinstance(deny, list):
             raise ValueError("permissions.deny is not a list")
     except (OSError, ValueError, AttributeError):
-        report.append(("SKIPPED (cannot read it; add the deny rules by hand)", SETTINGS))
+        report.append((SKIPPED + " (cannot read it; add the deny rules by hand)", SETTINGS))
         return
     missing = [rule for rule in DENY if rule not in deny]
     if not missing:
@@ -122,7 +128,7 @@ def merge_settings(root, report):
         return
     deny.extend(missing)
     # Write a temp file, then swap it in, so a crash never leaves half a file.
-    target = os.path.realpath(path)
+    target = path
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -145,7 +151,7 @@ def update_gitignore(root, report):
         write_new(root, GITIGNORE, "\n".join([IGNORE_HEAD] + lines) + "\n", report)
         return
     if os.path.islink(path) or not os.path.isfile(path):
-        report.append(("SKIPPED (not a plain file; add the inbox lines by hand)", GITIGNORE))
+        report.append((SKIPPED + " (not a plain file; add the inbox lines by hand)", GITIGNORE))
         return
     with open(path, encoding="utf-8", errors="replace") as f:
         text = f.read()
@@ -196,6 +202,12 @@ def main():
         "correction_words": [],
     }
 
+    home = os.path.realpath(os.path.expanduser("~"))
+    if os.path.realpath(root) == home or \
+            os.path.realpath(os.path.join(root, ".claude")) == os.path.realpath(cos_lib.current_config_dir()):
+        print("error: {} is your home folder or holds your Claude config. Make the "
+              "workspace in its own folder, for example ~/cos.".format(root), file=sys.stderr)
+        return 1
     marker = os.path.join(root, cos_lib.CONFIG_NAME)
     if os.path.lexists(marker):
         old, error = cos_lib.read_config(root)
@@ -204,8 +216,9 @@ def main():
                   .format(marker, " ".join(error.split())), file=sys.stderr)
             return 1
         if not old.get(cos_lib.MARKER_KEY):
-            print("error: {} belongs to some other tool (no \"{}\" key). Use another "
-                  "folder for the workspace.".format(marker, cos_lib.MARKER_KEY), file=sys.stderr)
+            print("error: {} is not a CoS config (it has no \"{}\": 1), so it may belong "
+                  "to some other tool. Use another folder for the workspace."
+                  .format(marker, cos_lib.MARKER_KEY), file=sys.stderr)
             return 1
 
     report = []
@@ -217,6 +230,14 @@ def main():
             write_new(root, rel, "", report)
         merge_settings(root, report)
         update_gitignore(root, report)
+        if any(state.startswith(SKIPPED) for state, _ in report):
+            # Without the deny rules or the ignore lines the workspace is not
+            # safe to use, so do not mark it as a workspace yet.
+            for state, rel in report:
+                print("  {:<8} {}".format(state, rel))
+            print("error: fix the SKIPPED file, then run init again; it keeps what exists.",
+                  file=sys.stderr)
+            return 1
         write_new(root, cos_lib.CONFIG_NAME,
                   json.dumps(config, indent=2, ensure_ascii=False) + "\n", report)
     except OSError as e:

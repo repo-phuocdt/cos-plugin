@@ -172,11 +172,13 @@ in a section called `## Current run`. A few lines is enough:
 
 ```markdown
 ## Current run
+- Started: <YYYY-MM-DD HH:MM>
 - Goal: <one sentence>
 - Acceptance: <the checks, frozen when you approved the plan>
 - Plan: approved — <files it will touch> | waiting
 - Round: 1 of 2
 - Node: implement — waiting on agent `maker` in pane `<pane-id>`
+- Panes: <every pane id you opened for this run>
 - Last verify: FAIL — <one line why>
 ```
 

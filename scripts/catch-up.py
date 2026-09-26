@@ -55,12 +55,22 @@ def cmd_project(profile_list, regex, path, since, cap):
         print("run --list to see what exists", file=sys.stderr)
         return 1
     floor = cos_lib.since_floor(since)
+    real = cos_lib.real_path(path)
     sessions = []
     for profile, tag, d in found:
         for f in glob.glob(os.path.join(d, "*.jsonl")):
             mtime = cos_lib.safe_mtime(f)
-            if mtime is not None and (floor is None or mtime >= floor):
-                sessions.append((mtime, f, profile, tag))
+            if mtime is None or (floor is not None and mtime < floor):
+                continue
+            # Folders like "my-repo" and "my_repo" share one dir name, so
+            # keep a session only when its own cwd is this folder.
+            file_tag = tag
+            cwd = cos_lib.session_cwd(f)
+            if cwd:
+                file_tag = cos_lib.cwd_tag(cwd, real)
+                if not file_tag:
+                    continue
+            sessions.append((mtime, f, profile, file_tag))
     shown = 0
     # Newest session first, across the main folder and every worktree.
     for _, f, profile, tag in sorted(sessions, reverse=True):

@@ -1,6 +1,6 @@
 ---
 name: session-start
-description: Chief of Staff (CoS) workspace only. The checks to run at the top of a new CoS session, before answering anything big - live runs, owed work, orphan panes, index drift, work you did not see, and the inbox.
+description: Chief of Staff (CoS) workspace only. The checks to run at the top of a new CoS session, before answering anything big - live runs, owed work, left-over panes, missing index lines, work you did not see, and the inbox.
 ---
 
 # Session start
@@ -14,9 +14,9 @@ or a new session hides work that is still open.
 
 ## The checks
 
-If the hook context starts with `WARNING: cos.json cannot be read`, tell the
-principal first and help them fix `cos.json`. Until then the hooks run with
-default settings.
+If the hook context starts with `WARNING: cos.json`, tell the principal
+first and help them fix `cos.json`. Until then the hooks run with default
+settings.
 
 ### 1. Live runs
 
@@ -37,8 +37,9 @@ herdr agent get <name>
 `working` -> say so and leave it. `done` or `blocked` -> read it and run the
 next node. Gone (the pane died) -> the run needs restarting from that node.
 
-A `## Current run` block older than the last log line is a dead run. Either
-pick the run back up, or ask the principal to drop it.
+A `## Current run` block whose `Started:` time is older than the last log
+line is a dead run. Either pick the run back up, or ask the principal to drop
+it.
 
 ### 2. Owed work
 
@@ -47,7 +48,7 @@ pick the run back up, or ask the principal to drop it.
 entry of `## Log`. Work that is owed is written there, in words like "still
 owed", "open item", or a question waiting on the principal.
 
-### 3. Orphan panes and agents
+### 3. Left-over panes and agents
 
 Only when you are inside Herdr (`test "${HERDR_ENV:-}" = 1`):
 
@@ -56,11 +57,13 @@ herdr agent list
 herdr pane list --workspace "$HERDR_WORKSPACE_ID"
 ```
 
-An agent that no `Node` line in a `## Current run` block names is left over
-from an old session. Close the pane you own. Do not close a
-pane you did not create, and never run `herdr server stop`.
+An agent is left over from an old session when no `## Current run` block
+names it or its pane (the `Node` and `Panes` lines). A live lead's own helpers
+are not left over: the lead started them, and it closes them. Close only a
+pane that a `Panes` line says you opened. Never close a pane you did not
+create, and never run `herdr server stop`.
 
-### 4. Index drift
+### 4. Missing index lines
 
 ```bash
 ls memory/projects/*.md
@@ -94,18 +97,22 @@ Three things matter in that list:
 ### 6. The inbox
 
 The plugin's SessionEnd hook writes one line into `memory/inbox.jsonl` at the
-end of every session in this workspace. The SessionStart hook tells you how
-many are waiting. Each line holds the first prompt and the prompts that read
-like a correction — the places where the principal turned you around.
-
-If `memory/inbox.reading.jsonl` is already there, a past session stopped
-halfway. Handle its lines first, then delete it.
+end of every session in this workspace that had new prompts. The SessionStart
+hook tells you how many are waiting. Each line holds the first new prompt and
+the prompts that look like a correction — the places where the principal told
+you that you went the wrong way.
 
 Move the inbox aside before you read it, so a session that ends while you work
-does not lose its line. Then read it, one record per line:
+does not lose its line. If a past session stopped halfway,
+`memory/inbox.reading.jsonl` is already there; these commands add the new
+lines to it and never overwrite it. Then read it, one record per line:
 
 ```bash
-mv memory/inbox.jsonl memory/inbox.reading.jsonl
+if [ -f memory/inbox.jsonl ]; then
+  mv memory/inbox.jsonl memory/inbox.new.jsonl &&
+  cat memory/inbox.new.jsonl >> memory/inbox.reading.jsonl &&
+  rm memory/inbox.new.jsonl
+fi
 cat memory/inbox.reading.jsonl
 ```
 
@@ -122,6 +129,13 @@ Act on each line:
 A correction word list only guesses. The English words are built in; words in
 the principal's own language go in `cos.json` under `correction_words`. Read the
 line before you trust the mark.
+
+Two rules for what you write:
+
+1. **Write conclusions, not prompt lines.** One line that says the rule beats
+   a copied prompt.
+2. **Never copy a secret.** A prompt can hold a token, a key, or a URL with a
+   password. Write the lesson without it.
 
 When every line is handled, delete the copy:
 

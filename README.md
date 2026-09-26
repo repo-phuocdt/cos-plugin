@@ -18,8 +18,12 @@ What you get:
 
 ## What you need
 
-- **Claude Code**, with plugin support (`claude plugin --help` works).
-- **Python 3** (standard library only; nothing to install).
+- **Claude Code**. Tested on version 2.1.283. The hooks use the exec form
+  (`command` plus `args`), so an old version may not run them.
+- **Python 3.7 or newer** as `python3` (standard library only; nothing to
+  install). On macOS, `/usr/bin/python3` may ask to install the Command Line
+  Tools the first time it runs.
+- **macOS or Linux.** Windows is not tested.
 - **Herdr**, a terminal multiplexer for coding agents (one window that runs
   many terminals, called panes). The CoS starts every
   other agent in a Herdr pane. Run the CoS inside Herdr, so `HERDR_ENV=1` is
@@ -86,8 +90,11 @@ The plugin folder is also a local marketplace (`.claude-plugin/marketplace.json`
    /cos:init name="Ada" language=English address=Sam profiles="work=/home/me/.claude-work,home=/home/me/.claude-home" runtimes=claude,codex
    ```
 
-3. It creates these files and never overwrites one that exists. If a
-   `.gitignore` is already there, it only adds the missing inbox lines:
+3. It creates these files and never overwrites one that exists. It only
+   adds lines to two files that may already be there: the deny rules to
+   `.claude/settings.json` (rewritten as JSON with 2-space indent), and the
+   inbox lines to `.gitignore`. It refuses your home folder and a folder whose
+   `.claude` is your Claude config:
 
    ```
    ~/cos
@@ -129,11 +136,14 @@ The plugin folder is also a local marketplace (`.claude-plugin/marketplace.json`
   transcripts from these folders.
 - `runtimes` — the Herdr agent kinds the CoS may start. Anything else is off.
 - `correction_words` — words in your language that mean "no, that is wrong".
-  English words like "no", "wrong", and "instead" are built in. The hooks use
-  them to mark the prompts where you corrected an agent.
+  English words like "no", "wrong", and "instead" are built in. A prompt is
+  marked as a correction only when it starts with one of these words. For
+  Chinese or Japanese, add words of two or more characters (like `不对`); a
+  one-character word counts only when it stands alone.
 
-`agent_name`, `language`, and `address` are also written into `identity.md`
-and `CLAUDE.md` at init. To change them later, edit those files too.
+`agent_name`, `language`, and `address` take effect in `identity.md` and
+`CLAUDE.md`, where init writes them. `cos.json` keeps a copy that no script
+reads. To change them later, edit `identity.md` and `CLAUDE.md`.
 
 ## Hooks
 
@@ -141,11 +151,14 @@ Both hooks first check that the session's folder is a CoS workspace: it holds
 a `cos.json` written by `/cos:init` (with `"cos_workspace": 1`) and a
 `memory/` folder. If not, they print nothing and write nothing. If `cos.json`
 has a typo and cannot be read, the folder still counts as a workspace: the
-hooks run with default settings, and SessionStart adds one warning line.
+hooks run with default settings, and SessionStart adds one warning line. The
+same line lists values the hooks must ignore, such as a `profiles` that is not
+a list.
 
 - **SessionStart** (`scripts/session-start.py`) adds to the session's context
   the folders with Claude Code sessions in the last 7 days (from every profile
-  in `cos.json`, leaving out the workspace itself) and the number of records
+  in `cos.json`, leaving out the workspace itself and sessions the CoS or a
+  lead agent started with a task file) and the number of records
   in `memory/inbox.jsonl`. It runs at every session start: new, resumed,
   cleared, or compacted.
 - **SessionEnd** (`scripts/session-end.py`) appends one JSON line to
@@ -158,16 +171,31 @@ hooks run with default settings, and SessionStart adds one warning line.
   inbox.
 
 To test a hook by hand, pipe a payload into it. Put your own paths in; the
-transcript must hold at least one prompt. This adds a real line to the inbox:
+transcript must hold at least one prompt. Use a copy of your workspace: the
+test adds a real line to the inbox, and it marks the transcript's prompts as
+recorded, so the real hook will skip them later:
 
 ```bash
 echo '{"session_id": "abc123", "cwd": "/home/me/cos", "transcript_path": "/path/to/transcript.jsonl", "reason": "other"}' \
   | python3 /path/to/cos-plugin/scripts/session-end.py
 ```
 
-Privacy: the inbox holds the first 200 characters of your prompts. It stays in
-your workspace folder, and `/cos:init` adds the inbox files to `.gitignore` so
-git does not pick them up by mistake.
+Privacy:
+
+- The inbox holds the first 200 characters of your prompts. It stays in your
+  workspace folder, and `/cos:init` adds the inbox files to `.gitignore` so git
+  does not pick them up by mistake.
+- The SessionStart hook and the catch-up script read the transcripts of every
+  profile in `cos.json`. When you list profiles, they also read `~/.claude`
+  and tag those rows `unknown`. So folder paths and prompts from all these
+  accounts can reach the CoS session's model.
+
+Limits:
+
+- `catch-up.py <repo>` finds worktrees under `<repo>/.claude/worktrees/`
+  only. A worktree somewhere else needs its own path.
+- A session run with `CLAUDE_CODE_PROJECT_DIR_NAME` set stores its
+  transcripts under that name, and the scripts do not find it.
 
 ## Skills
 
