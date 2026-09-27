@@ -115,9 +115,10 @@ Pick the profile from `cos.json` first (the `cos:model-routing` skill).
 
 ```bash
 # 1. brief (you write .lead-task.md into the repo)
-# 2. pane + agent, with the profile's full path on the pane
+# 2. pane + agent; leave the --env line out for the default profile
+#    (see step 3 of the cos:delegation skill)
 herdr pane split --current --direction right --cwd <repo> --no-focus \
-  --env CLAUDE_CONFIG_DIR=<profile config_dir>
+  --env CLAUDE_CONFIG_DIR=<config_dir>
 herdr agent start lead --kind claude --pane <pane-id> -- --effort xhigh
 
 # 3. prompt, no --wait
@@ -125,15 +126,18 @@ herdr agent prompt lead "Read .lead-task.md in this directory and do exactly wha
 herdr agent get lead            # expect working
 
 # 4. background wait — this is what wakes you up
-herdr agent wait lead --until done --timeout 3600000   # run in background
+herdr agent wait lead --until done --until blocked --until idle --timeout 3600000   # run in background
 ```
 
 Then write the `Node` line into `## Current run` and give the turn back. One
 line to the principal: the agent name, the pane, and what it is doing.
 
-When the wait wakes you:
+When the wait wakes you (the lead is `done`, `blocked`, or `idle`, or the
+wait failed):
 
-1. `herdr agent get lead` — `done`, `blocked`, or gone.
+1. `herdr agent get lead` — decide from the state it shows now: `working`
+   (start a new background wait), `done` or `idle` (go on), `blocked`, or
+   gone.
 2. Read `.lead-report.md` in the repo.
 3. Check the evidence, do not trust the verdict. No raw output, or no red
    proof, is a `FAIL` however green the summary looks.

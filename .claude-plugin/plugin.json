@@ -6,5 +6,6 @@
   "author": {
     "name": "cos-plugin contributors"
   },
+  "license": "MIT",
   "keywords": ["chief-of-staff", "delegation", "herdr", "memory", "agents"]
 }

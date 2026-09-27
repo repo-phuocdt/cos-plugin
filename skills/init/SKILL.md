@@ -1,7 +1,7 @@
 ---
 name: init
 description: Create a new Chief of Staff (CoS) workspace in the current folder. Asks for the agent name, the chat language, how to address the principal, the Claude profiles, and the Herdr runtimes, then writes CLAUDE.md, identity.md, cos.json, and memory/.
-argument-hint: "[name=<agent name>] [language=<chat language>] [address=<how to address you>] [profiles=<name=dir,...>] [runtimes=<kind,...>]"
+argument-hint: "[name=<agent name>] [language=<chat language>] [address=<how to address you>] [profiles=<default,name=dir,...>] [runtimes=<kind,...>]"
 disable-model-invocation: true
 ---
 
@@ -45,16 +45,21 @@ at most four questions per call, so ask in two calls:
 | `name` | What should your Chief of Staff be called? | `Chief of Staff` |
 | `language` | Which language should it chat in? | `English` |
 | `address` | How should it address you? (a name, a title, or plain "you") | `you` |
-| `profiles` | Which Claude profiles may it start agents on? Each is `name=<CLAUDE_CONFIG_DIR>`, comma-separated. | one profile, `default`, on the current config dir |
+| `profiles` | Which Claude profiles may it start agents on? `default` is your normal login (no `CLAUDE_CONFIG_DIR`); add others as `name=<CLAUDE_CONFIG_DIR>`, comma-separated. | one profile, `default` |
 | `runtimes` | Which Herdr agent kinds may it start? (`claude`, `codex`, `gemini`, `opencode`, ...) | `claude` |
 
 If you cannot ask (a non-interactive run), or the user says "defaults", use
 the default for every missing answer. Never invent other values.
 
+Before you ask about profiles, run `echo "${CLAUDE_CONFIG_DIR:-}"`. If it
+prints a path, this session runs on that profile, and the `default` profile
+does not use it. Say so, and offer that path as a named profile.
+
 ## 3. Write the workspace
 
-Run the plugin's script once. Pass one `--profile` per profile and one
-`--runtime` per runtime. Leave out a flag to use its default. Put every value
+Run the plugin's script once. Pass one `--profile` per profile (the default
+profile is `--profile default`, with no `=`) and one `--runtime` per runtime.
+Leave out a flag to use its default. Put every value
 in single quotes; write a single quote inside a value as `'\''`.
 
 ```bash

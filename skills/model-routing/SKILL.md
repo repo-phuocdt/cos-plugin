@@ -20,7 +20,9 @@ it; the principal can edit it at any time.
   to need one, say so and let the principal decide.
 - `profiles` — the Claude accounts you may start agents on. Each has a `name`
   and a `config_dir`. A profile is picked with the `CLAUDE_CONFIG_DIR`
-  environment variable on the pane.
+  environment variable on the pane. The `default` profile has
+  `"config_dir": null`: its panes get no `CLAUDE_CONFIG_DIR`, so they use the
+  normal login in `~/.claude`.
 
 `claude` is the default runtime, and the only one for risky work unless the
 principal says otherwise.
@@ -36,17 +38,21 @@ which one a new agent should use.
   agent.** Work paid by one account must not run on another. This is not a
   routine call you may make yourself.
 
-Set it on the pane with the full path from `cos.json` (not `~`, which a shell
-does not always expand there), then start the agent in that pane:
+Set it on the pane, then start the agent in that pane. For a profile with a
+`config_dir`, pass the full path from `cos.json` (not `~`, which a shell does
+not always expand there). For the `default` profile, leave the `--env` line
+out: setting the variable, even to `~/.claude`, makes Claude Code look for
+another saved login. A pane without `--env` takes Herdr's own environment, so
+start Herdr from a shell where `CLAUDE_CONFIG_DIR` is not set.
 
 ```bash
 herdr pane split --current --direction right --cwd <project-path> --no-focus \
-  --env CLAUDE_CONFIG_DIR=<profile config_dir>
+  --env CLAUDE_CONFIG_DIR=<config_dir>   # leave this line out for the default profile
 herdr agent start maker --kind claude --pane <pane-id>
 ```
 
-Keep the profile flag on every `pane split`, even for a non-Claude pane. A
-pane outlives one agent, so the next Claude agent that lands there takes that
+Put the profile on every `pane split`, even for a non-Claude pane. A pane
+outlives one agent, so the next Claude agent that lands there takes that
 account. Other kinds ignore the variable.
 
 ## How to pick the model
@@ -122,7 +128,7 @@ Pick the profile first (above), then:
 
 ```bash
 herdr pane split --current --direction right --cwd <project-path> --no-focus \
-  --env CLAUDE_CONFIG_DIR=<profile config_dir>
+  --env CLAUDE_CONFIG_DIR=<config_dir>   # leave this line out for the default profile
 herdr agent start maker --kind claude --pane <pane-id> -- --model sonnet --effort medium
 ```
 

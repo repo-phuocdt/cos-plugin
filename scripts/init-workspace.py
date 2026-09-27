@@ -9,7 +9,12 @@ no marker behind.
 Example:
   python3 init-workspace.py --dir ~/cos --name 'Chief of Staff' \\
       --language English --address you \\
-      --profile work=/home/me/.claude-work --runtime claude --runtime codex
+      --profile default --profile work=/home/me/.claude-work \\
+      --runtime claude --runtime codex
+
+A profile given as NAME alone (no "=") is the default profile: its panes
+start with CLAUDE_CONFIG_DIR unset, so Claude Code uses its normal login.
+With no --profile at all, the default profile is the only one.
 """
 
 import argparse
@@ -68,11 +73,15 @@ def one_line(value):
 def parse_profile(text):
     name, sep, path = text.partition("=")
     name = one_line(name)
+    if not sep and name:
+        return name, None  # the default profile: CLAUDE_CONFIG_DIR stays unset
     # Only "~" and $HOME are expanded. Any other "$" is refused, so a variable
     # that is not set, or is set to something else, never lands in cos.json.
     path = HOME_VAR.sub(lambda m: os.path.expanduser("~"), path.strip())
     if not sep or not name or not path:
-        raise argparse.ArgumentTypeError("use NAME=CONFIG_DIR, for example work=/home/me/.claude-work")
+        raise argparse.ArgumentTypeError(
+            "use NAME=CONFIG_DIR, for example work=/home/me/.claude-work, "
+            "or NAME alone for the default profile")
     if "$" in path:
         raise argparse.ArgumentTypeError(
             "the profile path {} holds a \"$\". Only ~ and $HOME are expanded; "
@@ -174,7 +183,8 @@ def main():
     ap.add_argument("--language", default=DEFAULTS["language"], help="chat language with the principal")
     ap.add_argument("--address", default=DEFAULTS["address"], help="how the agent addresses the principal")
     ap.add_argument("--profile", action="append", type=parse_profile, default=[],
-                    help="a Claude profile as NAME=CONFIG_DIR (repeat for more)")
+                    help="a Claude profile as NAME=CONFIG_DIR, or NAME alone for the "
+                         "default profile (repeat for more)")
     ap.add_argument("--runtime", action="append", default=[],
                     help="a Herdr agent kind the agent may start (repeat for more)")
     a = ap.parse_args()
@@ -186,11 +196,15 @@ def main():
         "address": one_line(a.address) or DEFAULTS["address"],
     }
     # Store full paths: a pane gets CLAUDE_CONFIG_DIR=<config_dir>, and a shell
-    # does not always expand "~" there.
-    profile_list = [{"name": name, "config_dir": cos_lib.expand(path, root)}
+    # does not always expand "~" there. The default profile stores null: its
+    # panes get no CLAUDE_CONFIG_DIR at all. Setting the variable, even to
+    # ~/.claude, makes Claude Code look for a different saved login.
+    if sum(1 for _, path in a.profile if path is None) > 1:
+        ap.error("give at most one default profile (a NAME with no \"=\")")
+    profile_list = [{"name": name, "config_dir": None if path is None else cos_lib.expand(path, root)}
                     for name, path in a.profile]
     if not profile_list:
-        profile_list = [{"name": "default", "config_dir": cos_lib.current_config_dir()}]
+        profile_list = [{"name": "default", "config_dir": None}]
     runtimes = [one_line(r) for r in a.runtime if one_line(r)] or DEFAULTS["runtime"]
     config = {
         cos_lib.MARKER_KEY: 1,

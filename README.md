@@ -81,13 +81,13 @@ The plugin folder is also a local marketplace (`.claude-plugin/marketplace.json`
    | The agent's name | `Chief of Staff` |
    | The chat language | `English` |
    | How it addresses you | `you` |
-   | Claude profiles it may use (`name=<CLAUDE_CONFIG_DIR>`) | one profile, `default`, on your current config dir |
+   | Claude profiles it may use: `default`, and others as `name=<CLAUDE_CONFIG_DIR>` | one profile, `default` (your normal login) |
    | Herdr runtimes it may start (`claude`, `codex`, ...) | `claude` |
 
    You can also pass the answers, and skip the questions:
 
    ```
-   /cos:init name="Ada" language=English address=Sam profiles="work=/home/me/.claude-work,home=/home/me/.claude-home" runtimes=claude,codex
+   /cos:init name="Ada" language=English address=Sam profiles="default,work=/home/me/.claude-work" runtimes=claude,codex
    ```
 
 3. It creates these files and never overwrites one that exists. It only
@@ -122,18 +122,27 @@ The plugin folder is also a local marketplace (`.claude-plugin/marketplace.json`
   "agent_name": "Chief of Staff",
   "language": "English",
   "address": "you",
-  "profiles": [{ "name": "default", "config_dir": "/home/me/.claude" }],
+  "profiles": [
+    { "name": "default", "config_dir": null },
+    { "name": "work", "config_dir": "/home/me/.claude-work" }
+  ],
   "runtimes": ["claude"],
   "correction_words": []
 }
 ```
 
 - `cos_workspace` — marks the folder as a CoS workspace. Keep it.
-- `profiles` — the Claude accounts the CoS may start agents on. Each agent
-  pane gets `CLAUDE_CONFIG_DIR=<config_dir>`, so use full paths (init turns
-  `~` into a full path for you). With more than one profile, the
-  CoS asks you which one to use. The hooks and the catch-up script read
-  transcripts from these folders.
+- `profiles` — the Claude accounts the CoS may start agents on.
+  - The `default` profile has `"config_dir": null`. Its agent panes get no
+    `CLAUDE_CONFIG_DIR`, so they use your normal login and keep transcripts in
+    `~/.claude`. Do not write `~/.claude` there instead: setting the variable,
+    even to that folder, makes Claude Code look for another saved login. A
+    pane without the variable takes Herdr's own environment, so start Herdr
+    from a shell where `CLAUDE_CONFIG_DIR` is not set.
+  - Any other profile has a full path. Its agent panes get
+    `CLAUDE_CONFIG_DIR=<config_dir>` (init turns `~` into a full path for you).
+  - With more than one profile, the CoS asks you which one to use. The hooks
+    and the catch-up script read transcripts from these folders.
 - `runtimes` — the Herdr agent kinds the CoS may start. Anything else is off.
 - `correction_words` — words in your language that mean "no, that is wrong".
   English words like "no", "wrong", and "instead" are built in. A prompt is
@@ -186,8 +195,8 @@ Privacy:
   workspace folder, and `/cos:init` adds the inbox files to `.gitignore` so git
   does not pick them up by mistake.
 - The SessionStart hook and the catch-up script read the transcripts of every
-  profile in `cos.json`. When you list profiles, they also read `~/.claude`
-  and tag those rows `unknown`. So folder paths and prompts from all these
+  profile in `cos.json`. When your profiles leave out the default one, they
+  also read `~/.claude` and tag those rows `unknown`. So folder paths and prompts from all these
   accounts can reach the CoS session's model.
 
 Limits:

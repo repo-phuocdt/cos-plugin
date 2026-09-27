@@ -34,8 +34,9 @@ round number, and a `Node` line with the agent name and pane id. When the
 herdr agent get <name>
 ```
 
-`working` -> say so and leave it. `done` or `blocked` -> read it and run the
-next node. Gone (the pane died) -> the run needs restarting from that node.
+`working` -> say so and leave it. `done`, `idle`, or `blocked` -> read it and
+run the next node. Gone (the pane died) -> the run needs restarting from that
+node.
 
 A `## Current run` block whose `Started:` time is older than the last log
 line is a dead run. Either pick the run back up, or ask the principal to drop

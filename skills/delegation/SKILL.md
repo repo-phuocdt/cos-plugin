@@ -51,18 +51,26 @@ a stop rule, load the `cos:loop` skill.
    you are not ready to delegate. The one exception is a plan-only run (gate 1
    in the `cos:loop` skill).
 2. **Pick a runtime and a profile.** See the `cos:model-routing` skill. The
-   profile is a `config_dir` from `cos.json`.
+   profiles are in `cos.json`.
 3. **Open a pane** in the project's directory, without stealing focus:
 
    ```bash
    herdr pane split --current --direction right --cwd <project-path> --no-focus \
-     --env CLAUDE_CONFIG_DIR=<profile config_dir>
+     --env CLAUDE_CONFIG_DIR=<config_dir>   # leave this line out for the default profile
    ```
 
-   Always set the profile on the pane. Use the full path from `cos.json`, not
-   `~`: a shell does not always expand `~` there. A pane outlives one agent,
-   and the next Claude agent that lands there takes that account. Read the new pane id from
-   `.result.pane.pane_id`.
+   Put the profile on the pane:
+   - a profile with a `config_dir` in `cos.json`: add
+     `--env CLAUDE_CONFIG_DIR=<config_dir>`, with the full path from
+     `cos.json`, not `~` (a shell does not always expand `~` there);
+   - the `default` profile (`"config_dir": null`): leave `--env` out. The
+     agent then uses the normal login in `~/.claude`. Setting the variable,
+     even to `~/.claude`, makes Claude Code look for another saved login. A
+     pane without `--env` takes Herdr's own environment, so start Herdr from
+     a shell where `CLAUDE_CONFIG_DIR` is not set.
+
+   A pane outlives one agent, and the next Claude agent that lands there
+   takes that account. Read the new pane id from `.result.pane.pane_id`.
 4. **Start the agent** with a name that says its job:
 
    ```bash
@@ -133,8 +141,8 @@ Rules:
 - Do not pass `--wait` to `herdr agent prompt`. Do not use `herdr agent wait`
   to sit on a long run.
 - After you prompt, run `herdr agent get <name>` once. `working` means it
-  landed. `idle` a few seconds later means it did not — fix that now, it is
-  cheap.
+  landed. If it is still `idle` a few seconds later and the pane shows no new
+  output, the prompt did not land — fix that now, it is cheap.
 - Write the agent name and its pane id into `## Current run` in the project
   file, so a new session can pick the run up.
 - Then answer the principal in one line and stop.
@@ -147,12 +155,19 @@ principal should not have to ask "is it done yet?".
 So right after the `agent get` check, start one **background** wait:
 
 ```bash
-herdr agent wait maker --until done --timeout 3600000   # run it in the background
+herdr agent wait maker --until done --until blocked --until idle --timeout 3600000   # run it in the background
 ```
 
+It wakes you when the agent stops working for any reason: `done` (it
+finished), `blocked` (a question or a permission screen waits for an
+answer), or `idle` (it finished, and someone already looked at the result).
+A wait with `--until done` alone sleeps through a `blocked` agent until the
+timeout.
+
 Run it with the harness's background-run option, not with `&`. The command
-sits outside your turn, and the harness calls you back when it exits. Then you
-read the agent and run the next node.
+sits outside your turn, and the harness calls you back when it exits. Then run
+`herdr agent get <name>`, read the agent, and decide from the state it shows
+now, not from the reason the wait woke up.
 
 Four rules for the wait:
 
@@ -166,13 +181,14 @@ Four rules for the wait:
   crashed. Its work is lost. Run `herdr agent list`, say so to the principal,
   and ask before starting the job again. Never read a failed wait as success.
 
-When you come back, read the agent. Three states:
+When you come back, run `herdr agent get <name>` and read the agent. Four
+states:
 
 | State | You |
 |---|---|
-| `working` | say so, in one line, and move on |
+| `working` | it started again; say so in one line, and start a new background wait |
 | `blocked` | read its output, answer it, or bring the question to the principal |
-| `done` | read the result and run the `decide` node in the `cos:loop` skill |
+| `done` or `idle` | read the result and run the `decide` node in the `cos:loop` skill |
 
 **One exception** to the no-`--wait` rule: a job you expect to end in
 seconds, like a scout that answers five lines. Even then, cap it —
@@ -250,12 +266,13 @@ herdr agent get maker        # expect agent_status: working
 herdr agent read maker --source visible --lines 20
 ```
 
-If the status is still `idle` a few seconds later, the prompt did not land.
+If the status is still `idle` a few seconds later and the pane shows no new
+output, the prompt did not land.
 
 ## When an agent gets blocked
 
-`herdr agent wait <name> --until blocked` tells you it needs input. Read its
-output, then:
+The background wait also wakes you when the agent is `blocked`: it needs
+input. Read its output, then:
 
 - The answer is in your notes or the vision → answer it yourself, as the
   principal.

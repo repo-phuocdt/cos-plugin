@@ -121,9 +121,12 @@ def config_problems(config):
         notes.append('"profiles" is not a list, so it is ignored')
     elif isinstance(items, list):
         for i, p in enumerate(items):
-            if not isinstance(p, dict) or not isinstance(p.get("config_dir"), str) \
-                    or not p["config_dir"].strip():
-                notes.append('profile {} has no "config_dir", so it is ignored'.format(i + 1))
+            if not isinstance(p, dict):
+                notes.append('profile {} is not an object, so it is ignored'.format(i + 1))
+            elif p.get("config_dir") is not None and not (
+                    isinstance(p["config_dir"], str) and p["config_dir"].strip()):
+                notes.append('profile {} has a "config_dir" that is not a path, so it is '
+                             'ignored'.format(i + 1))
             elif str(p.get("name")) == "unknown":
                 notes.append('profile {} is named "unknown", which the hooks use for '
                              'unlisted accounts'.format(i + 1))
@@ -170,23 +173,33 @@ def current_config_dir():
     return expand(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude")
 
 
+def uses_default_dir(profile):
+    """True for the default profile: a profile with no "config_dir" (or null).
+    Its panes start with CLAUDE_CONFIG_DIR unset, so Claude Code uses its
+    normal login and keeps its transcripts in ~/.claude."""
+    return isinstance(profile, dict) and profile.get("config_dir") is None
+
+
 def profiles(config, root=None):
     """Return (name, config_dir) for every Claude profile to scan.
 
     The list comes from "profiles" in cos.json; a relative config_dir is read
-    from the workspace root. With no profiles set, it is the config dir of this
-    process. When profiles are set and ~/.claude is not one of them, ~/.claude
-    is added as "unknown": a session there ran on an account the principal did
-    not list.
+    from the workspace root. The default profile (no config_dir) reads
+    ~/.claude. With no profiles set, it is the config dir of this process.
+    When profiles are set and ~/.claude is not one of them, ~/.claude is added
+    as "unknown": a session there ran on an account the principal did not
+    list.
     """
     out, seen = [], set()
     items = config.get("profiles")
     for p in items if isinstance(items, list) else []:
-        if not isinstance(p, dict) or not isinstance(p.get("config_dir"), str):
+        if uses_default_dir(p):
+            path = expand("~/.claude")
+        elif isinstance(p, dict) and isinstance(p.get("config_dir"), str) \
+                and p["config_dir"].strip():
+            path = expand(p["config_dir"].strip(), root)
+        else:
             continue
-        if not p["config_dir"].strip():
-            continue
-        path = expand(p["config_dir"].strip(), root)
         if os.path.realpath(path) in seen:
             continue
         seen.add(os.path.realpath(path))

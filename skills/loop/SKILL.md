@@ -146,8 +146,9 @@ A gate is a hard rule. It lives here, not inside a prompt.
    says so, in that run. Do not add one because the change looks big.
 8. **The loop never blocks your session, and never goes quiet either.** After
    you prompt an agent you check it landed, start one background
-   `herdr agent wait <name> --until done --timeout <ms>`, and hand the turn back
-   to the principal. The run lives in `## Current run`, not in a `--wait` call.
+   `herdr agent wait <name> --until done --until blocked --until idle --timeout <ms>`,
+   and hand the turn back to the principal. When it wakes, run
+   `herdr agent get <name>` and act on the state it shows. The run lives in `## Current run`, not in a `--wait` call.
    The background wait is what brings you back, so the principal never has to
    ask whether the agent finished. See "Never block the session" in the
    `cos:delegation` skill.
