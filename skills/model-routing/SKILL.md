@@ -40,14 +40,17 @@ which one a new agent should use.
 
 Set it on the pane, then start the agent in that pane. For a profile with a
 `config_dir`, pass the full path from `cos.json` (not `~`, which a shell does
-not always expand there). For the `default` profile, leave the `--env` line
-out: setting the variable, even to `~/.claude`, makes Claude Code look for
+not always expand there). For the `default` profile, use the command with no
+`--env`: setting the variable, even to `~/.claude`, makes Claude Code look for
 another saved login. A pane without `--env` takes Herdr's own environment, so
 start Herdr from a shell where `CLAUDE_CONFIG_DIR` is not set.
 
 ```bash
-herdr pane split --current --direction right --cwd <project-path> --no-focus \
-  --env CLAUDE_CONFIG_DIR=<config_dir>   # leave this line out for the default profile
+# default profile ("config_dir": null): no --env
+herdr pane split --current --direction right --cwd <project-path> --no-focus
+# a profile with a config_dir: add --env with its full path
+herdr pane split --current --direction right --cwd <project-path> --no-focus --env CLAUDE_CONFIG_DIR=<config_dir>
+# then, in the new pane
 herdr agent start maker --kind claude --pane <pane-id>
 ```
 
@@ -127,8 +130,11 @@ unless the principal said so for that repo.
 Pick the profile first (above), then:
 
 ```bash
-herdr pane split --current --direction right --cwd <project-path> --no-focus \
-  --env CLAUDE_CONFIG_DIR=<config_dir>   # leave this line out for the default profile
+# default profile ("config_dir": null): no --env
+herdr pane split --current --direction right --cwd <project-path> --no-focus
+# a profile with a config_dir: add --env with its full path
+herdr pane split --current --direction right --cwd <project-path> --no-focus --env CLAUDE_CONFIG_DIR=<config_dir>
+# then, in the new pane
 herdr agent start maker --kind claude --pane <pane-id> -- --model sonnet --effort medium
 ```
 

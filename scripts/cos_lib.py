@@ -21,6 +21,8 @@ import sys
 import unicodedata
 
 CONFIG_NAME = "cos.json"
+# The keys a profile in cos.json may have.
+PROFILE_KEYS = ("name", "config_dir")
 MARKER_KEY = "cos_workspace"
 INBOX = os.path.join("memory", "inbox.jsonl")
 # The session-start skill moves the inbox here while it reads it.
@@ -123,7 +125,14 @@ def config_problems(config):
         for i, p in enumerate(items):
             if not isinstance(p, dict):
                 notes.append('profile {} is not an object, so it is ignored'.format(i + 1))
-            elif p.get("config_dir") is not None and not (
+                continue
+            extra = sorted(k for k in p if k not in PROFILE_KEYS)
+            if extra:
+                notes.append('profile {} has unknown keys ({})'.format(i + 1, ", ".join(extra)))
+            if "config_dir" not in p:
+                notes.append('profile {} has no "config_dir" (write null for the default '
+                             'login), so it is ignored'.format(i + 1))
+            elif p["config_dir"] is not None and not (
                     isinstance(p["config_dir"], str) and p["config_dir"].strip()):
                 notes.append('profile {} has a "config_dir" that is not a path, so it is '
                              'ignored'.format(i + 1))
@@ -174,10 +183,12 @@ def current_config_dir():
 
 
 def uses_default_dir(profile):
-    """True for the default profile: a profile with no "config_dir" (or null).
+    """True for the default profile: "config_dir" is written out as null.
     Its panes start with CLAUDE_CONFIG_DIR unset, so Claude Code uses its
-    normal login and keeps its transcripts in ~/.claude."""
-    return isinstance(profile, dict) and profile.get("config_dir") is None
+    normal login and keeps its transcripts in ~/.claude. A profile with no
+    "config_dir" key at all (for example a typo in the key name) is not the
+    default; it is ignored, and SessionStart warns about it."""
+    return isinstance(profile, dict) and "config_dir" in profile and profile["config_dir"] is None
 
 
 def profiles(config, root=None):
@@ -357,6 +368,57 @@ def local_minute(ts):
     return t.strftime("%Y-%m-%dT%H:%M")
 
 
+def content_text(content):
+    """The text parts of a message content: a string, or a list of parts."""
+    if isinstance(content, list):
+        return "".join(
+            p.get("text", "") for p in content
+            if isinstance(p, dict) and p.get("type") == "text")
+    return content if isinstance(content, str) else None
+
+
+def human_turn(rec):
+    """Return (text, raw timestamp, key source) when a transcript record is a
+    turn a human typed, else None.
+
+    Two record shapes hold human turns:
+      - {"type": "user", "message": {"content": ...}} - a normal prompt;
+      - {"type": "attachment", "attachment": {"type": "queued_command",
+        "commandMode": "prompt", "origin": {"kind": "human"}, "prompt": ...}}
+        - a prompt typed while the agent was still working. Claude Code
+        stores it only in this form. A queued command with another
+        commandMode (such as "task-notification"), another origin kind
+        (such as "peer"), or isMeta was written by a machine.
+    """
+    if not isinstance(rec, dict) or rec.get("isSidechain") or rec.get("isMeta"):
+        return None
+    if rec.get("type") == "user":
+        if rec.get("isCompactSummary"):
+            return None
+        message = rec.get("message")
+        text = content_text(message.get("content") if isinstance(message, dict) else None)
+        stamp = rec.get("timestamp")
+    elif rec.get("type") == "attachment":
+        att = rec.get("attachment")
+        if not isinstance(att, dict) or att.get("type") != "queued_command":
+            return None
+        if att.get("commandMode") != "prompt" or att.get("isMeta"):
+            return None
+        origin = att.get("origin")
+        if origin is not None and not (isinstance(origin, dict) and origin.get("kind") == "human"):
+            return None
+        text = content_text(att.get("prompt"))
+        stamp = att.get("timestamp") or rec.get("timestamp")
+    else:
+        return None
+    if not isinstance(text, str):
+        return None
+    text = unwrap(text.strip())
+    if not text:
+        return None
+    return text, stamp if isinstance(stamp, str) else "", rec.get("uuid")
+
+
 def human_prompts(jsonl_path, since=None):
     """Yield (local time, text, is_first_of_session, key) for real human turns.
 
@@ -368,35 +430,22 @@ def human_prompts(jsonl_path, since=None):
     first = True
     with open(jsonl_path, encoding="utf-8", errors="replace") as f:
         for line in f:
-            if '"user"' not in line:
+            if '"user"' not in line and '"queued_command"' not in line:
                 continue  # cheap skip before the JSON parse
             try:
                 rec = json.loads(line)
             except ValueError:
                 continue
-            if not isinstance(rec, dict) or rec.get("type") != "user":
+            turn = human_turn(rec)
+            if not turn:
                 continue
-            if rec.get("isSidechain") or rec.get("isMeta") or rec.get("isCompactSummary"):
-                continue
-            message = rec.get("message")
-            content = message.get("content") if isinstance(message, dict) else None
-            if isinstance(content, list):
-                content = "".join(
-                    p.get("text", "") for p in content
-                    if isinstance(p, dict) and p.get("type") == "text"
-                )
-            if not isinstance(content, str):
-                continue
-            text = unwrap(content.strip())
-            if not text:
-                continue
+            text, raw_ts, uuid = turn
             if COS_PROMPT.search(text):
                 if first:
                     return  # a delegate session: none of it is the principal's
                 continue
             is_first, first = first, False
-            raw_ts = rec.get("timestamp") if isinstance(rec.get("timestamp"), str) else ""
-            key = rec.get("uuid") if isinstance(rec.get("uuid"), str) and rec.get("uuid") else (
+            key = uuid if isinstance(uuid, str) and uuid else (
                 hashlib.sha1((raw_ts + "\n" + text).encode("utf-8")).hexdigest())
             ts = local_minute(raw_ts)
             if since and ts and ts[:10] < since:
@@ -442,27 +491,15 @@ def is_delegate_session(jsonl_path):
     try:
         with open(jsonl_path, encoding="utf-8", errors="replace") as f:
             for line in f:
-                if '"user"' not in line:
+                if '"user"' not in line and '"queued_command"' not in line:
                     continue
                 try:
                     rec = json.loads(line)
                 except ValueError:
                     continue
-                if not isinstance(rec, dict) or rec.get("type") != "user":
-                    continue
-                if rec.get("isSidechain") or rec.get("isMeta") or rec.get("isCompactSummary"):
-                    continue
-                message = rec.get("message")
-                content = message.get("content") if isinstance(message, dict) else None
-                if isinstance(content, list):
-                    content = "".join(
-                        p.get("text", "") for p in content
-                        if isinstance(p, dict) and p.get("type") == "text")
-                if not isinstance(content, str):
-                    continue
-                text = unwrap(content.strip())
-                if text:
-                    return bool(COS_PROMPT.search(text))
+                turn = human_turn(rec)
+                if turn:
+                    return bool(COS_PROMPT.search(turn[0]))
     except OSError:
         pass
     return False

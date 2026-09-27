@@ -34,9 +34,16 @@ round number, and a `Node` line with the agent name and pane id. When the
 herdr agent get <name>
 ```
 
-`working` -> say so and leave it. `done`, `idle`, or `blocked` -> read it and
-run the next node. Gone (the pane died) -> the run needs restarting from that
-node.
+`working` -> say so, and start one background wait on it, the same form as
+in the `cos:delegation` skill. The wait from the older session ended with that
+session, so without a new one nothing wakes you when the agent stops:
+
+```bash
+herdr agent wait <name> --until done --until blocked --until idle --timeout 3600000   # run in the background
+```
+
+`done`, `idle`, or `blocked` -> read it and run the next node. Gone (the pane
+died) -> the run needs restarting from that node.
 
 A `## Current run` block whose `Started:` time is older than the last log
 line is a dead run. Either pick the run back up, or ask the principal to drop
@@ -159,5 +166,7 @@ If everything is clean, say it in one line and stop. Do not print the checks.
 ## What this is not
 
 This is not a plan and not a report. Do not write a file, except the notes and
-the inbox steps from check 6. Do not start an agent during session start. You
-are only reading state and handing the principal the choice.
+the inbox steps from check 6. Do not start an agent during session start; the
+one thing you may start is a background wait on an agent that is already
+working (check 1). You are only reading state and handing the principal the
+choice.

@@ -138,7 +138,10 @@ The plugin folder is also a local marketplace (`.claude-plugin/marketplace.json`
     `~/.claude`. Do not write `~/.claude` there instead: setting the variable,
     even to that folder, makes Claude Code look for another saved login. A
     pane without the variable takes Herdr's own environment, so start Herdr
-    from a shell where `CLAUDE_CONFIG_DIR` is not set.
+    from a shell where `CLAUDE_CONFIG_DIR` is not set. Write the `null` out:
+    a profile with no `config_dir` key (for example after a typo in the key
+    name) is ignored, and SessionStart warns about it. In init, the default
+    profile is `--profile default`, the word alone.
   - Any other profile has a full path. Its agent panes get
     `CLAUDE_CONFIG_DIR=<config_dir>` (init turns `~` into a full path for you).
   - With more than one profile, the CoS asks you which one to use. The hooks

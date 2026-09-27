@@ -85,6 +85,10 @@ Acceptance (frozen — do not add to this list):
   one-line prompt `Read the file .<helper>-task.md in this directory and do
   exactly what it says.` Never commit any `.*-task.md` file or
   `.lead-report.md`.
+- Every helper pane uses the same Claude account as you:
+  <`--env CLAUDE_CONFIG_DIR=<config_dir>` on every `herdr pane split` |
+  no `--env` on any `herdr pane split` (default profile)>. Never start a
+  helper on another account.
 - At most <N> helper agents alive at once. Close every pane you open.
 - If you stop to ask a question, write it in `.lead-report.md` with the exact
   question, the answer you got, who answered, and the time. "The user
@@ -103,6 +107,13 @@ Report: end with Status: DONE | BLOCKED | NEEDS_CONTEXT + 2 lines summary
 ```
 
 `<N>` is 2 unless the job clearly splits into parts that touch different files.
+
+Fill in the account rule with the profile you give the lead itself, and keep
+only one of the two choices: the `--env` form with the profile's full
+`config_dir` for a named profile, or "no `--env`" for the `default` profile.
+A helper pane that the lead opens without `--env` takes Herdr's own
+environment, so without this rule a lead on a named profile would start its
+helpers on another account.
 A lead with no cap starts an agent per idea and uses up the account's session
 limit.
 
@@ -115,10 +126,10 @@ Pick the profile from `cos.json` first (the `cos:model-routing` skill).
 
 ```bash
 # 1. brief (you write .lead-task.md into the repo)
-# 2. pane + agent; leave the --env line out for the default profile
-#    (see step 3 of the cos:delegation skill)
-herdr pane split --current --direction right --cwd <repo> --no-focus \
-  --env CLAUDE_CONFIG_DIR=<config_dir>
+# 2. pane + agent (step 3 of the cos:delegation skill); use ONE of the two
+#    pane lines, by profile
+herdr pane split --current --direction right --cwd <repo> --no-focus    # default profile
+herdr pane split --current --direction right --cwd <repo> --no-focus --env CLAUDE_CONFIG_DIR=<config_dir>    # named profile
 herdr agent start lead --kind claude --pane <pane-id> -- --effort xhigh
 
 # 3. prompt, no --wait

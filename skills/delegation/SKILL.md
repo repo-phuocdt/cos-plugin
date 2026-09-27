@@ -54,9 +54,13 @@ a stop rule, load the `cos:loop` skill.
    profiles are in `cos.json`.
 3. **Open a pane** in the project's directory, without stealing focus:
 
+   Run one of these two, by profile:
+
    ```bash
-   herdr pane split --current --direction right --cwd <project-path> --no-focus \
-     --env CLAUDE_CONFIG_DIR=<config_dir>   # leave this line out for the default profile
+   # default profile ("config_dir": null): no --env
+   herdr pane split --current --direction right --cwd <project-path> --no-focus
+   # a profile with a config_dir: add --env with its full path
+   herdr pane split --current --direction right --cwd <project-path> --no-focus --env CLAUDE_CONFIG_DIR=<config_dir>
    ```
 
    Put the profile on the pane:
